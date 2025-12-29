@@ -176,9 +176,26 @@ get_previous_hash() {
     [ -f "$hash_file" ] && cat "$hash_file"
 }
 
+# 最後にペインコンテンツが変化した時刻を保存
+save_last_change_time() {
+    local pane_id="$1"
+    local timestamp="$2"
+    ensure_cache_dir
+    echo "$timestamp" > "$CACHE_DIR/${pane_id//\//_}.lastchange"
+}
+
+# 最後にペインコンテンツが変化した時刻を取得
+get_last_change_time() {
+    local pane_id="$1"
+    local time_file="$CACHE_DIR/${pane_id//\//_}.lastchange"
+    [ -f "$time_file" ] && cat "$time_file"
+}
+
 # ペインコンテンツの変化を検出
 check_pane_activity() {
     local pane_id="$1"
+    local current_time
+    current_time=$(date +%s)
 
     # 現在のペインコンテンツをキャプチャ（最後の20行）
     local current_content
@@ -195,13 +212,29 @@ check_pane_activity() {
     # 現在のハッシュを保存
     save_content_hash "$pane_id" "$current_hash"
 
-    # 比較結果を返す
+    # 比較結果を判定
     if [ -z "$previous_hash" ]; then
+        # 初回は変化ありとみなす
+        save_last_change_time "$pane_id" "$current_time"
         echo "unknown"
     elif [ "$current_hash" != "$previous_hash" ]; then
+        # 変化あり - 時刻を更新
+        save_last_change_time "$pane_id" "$current_time"
         echo "working"
     else
-        echo "idle"
+        # 変化なし - 最後の変化から30秒以内ならworking
+        local last_change
+        last_change=$(get_last_change_time "$pane_id")
+        if [ -n "$last_change" ]; then
+            local diff=$((current_time - last_change))
+            if [ "$diff" -lt 30 ]; then
+                echo "working"
+            else
+                echo "idle"
+            fi
+        else
+            echo "idle"
+        fi
     fi
 }
 
