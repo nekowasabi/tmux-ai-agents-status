@@ -10,9 +10,12 @@ source "$CURRENT_DIR/session_tracker.sh"
 DEFAULT_ICON=""                    # Nerd Font: robot
 DEFAULT_WORKING_DOT="●"
 DEFAULT_IDLE_DOT="○"
-DEFAULT_WORKING_COLOR="#f97316"    # orange
-DEFAULT_IDLE_COLOR="#22c55e"       # green
-DEFAULT_ICON_COLOR="#a855f7"       # purple
+# tmux 3.x requires hex colors without # prefix for #[fg=] syntax
+# idle=赤、working=緑
+DEFAULT_WORKING_COLOR="colour46"    # green (tmux colour46 ≈ #00ff00) - 作業中
+DEFAULT_IDLE_COLOR="colour196"      # red (tmux colour196 ≈ #ff0000) - アイドル
+DEFAULT_ICON_COLOR="colour135"      # purple (tmux colour135 ≈ #af5fff)
+DEFAULT_SEPARATOR=" | "             # ペイン間のセパレータ
 
 # Cache configuration
 CACHE_DIR="/tmp"
@@ -36,43 +39,60 @@ main() {
         fi
     fi
 
-    # Get session states
-    local states
-    states=$(get_session_states)
-
-    local working idle
-    working=$(echo "$states" | grep -oP 'working:\K[0-9]+')
-    idle=$(echo "$states" | grep -oP 'idle:\K[0-9]+')
+    # Get session details (新形式: pane_name:status|pane_name:status|...)
+    local details
+    details=$(get_session_details)
 
     # No sessions
-    if [ "$working" = "0" ] && [ "$idle" = "0" ]; then
+    if [ -z "$details" ]; then
         echo "" > "$CACHE_FILE"
         cat "$CACHE_FILE"
         return
     fi
 
     # Load user configuration
-    local icon working_dot idle_dot working_color idle_color icon_color
-    icon=$(get_tmux_option "@claudecode_icon" "$DEFAULT_ICON")
+    local working_dot idle_dot working_color idle_color separator
     working_dot=$(get_tmux_option "@claudecode_working_dot" "$DEFAULT_WORKING_DOT")
     idle_dot=$(get_tmux_option "@claudecode_idle_dot" "$DEFAULT_IDLE_DOT")
     working_color=$(get_tmux_option "@claudecode_working_color" "$DEFAULT_WORKING_COLOR")
     idle_color=$(get_tmux_option "@claudecode_idle_color" "$DEFAULT_IDLE_COLOR")
-    icon_color=$(get_tmux_option "@claudecode_icon_color" "$DEFAULT_ICON_COLOR")
+    separator=$(get_tmux_option "@claudecode_separator" "$DEFAULT_SEPARATOR")
 
-    # Generate output
+    # Generate output: "● ● ○" 形式（ドットのみ）
     local output=""
-    output+="#[fg=$icon_color]$icon #[default]"
+    local first=1
 
-    # Add working dots
-    for ((i=0; i<working; i++)); do
-        output+="#[fg=$working_color]$working_dot#[default]"
+    # Parse details (project_name:status|project_name:status|...)
+    IFS='|' read -ra entries <<< "$details"
+    for entry in "${entries[@]}"; do
+        local project_name status dot color
+
+        # Parse entry (project_name:status)
+        project_name="${entry%%:*}"
+        status="${entry##*:}"
+
+        # 状態に応じてドットと色を選択
+        if [ "$status" = "working" ]; then
+            dot="$working_dot"
+            color="$working_color"
+        else
+            dot="$idle_dot"
+            color="$idle_color"
+        fi
+
+        # セパレータを追加（最初以外）
+        if [ "$first" = "1" ]; then
+            first=0
+            output+="  "  # Left margin
+        else
+            output+=" "  # Space between dots
+        fi
+
+        # ドットのみを追加（プロジェクト名は表示しない）
+        output+="#[fg=$color]${dot}#[default]"
     done
 
-    # Add idle dots
-    for ((i=0; i<idle; i++)); do
-        output+="#[fg=$idle_color]$idle_dot#[default]"
-    done
+    output+="  "  # Right margin
 
     echo "$output" > "$CACHE_FILE"
     cat "$CACHE_FILE"

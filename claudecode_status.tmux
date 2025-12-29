@@ -36,6 +36,7 @@ main() {
     update_tmux_option "status-left"
     update_tmux_option "status-format[0]"
     update_tmux_option "status-format[1]"
+    update_tmux_option "pane-border-format"
 }
 
 main "$@"
