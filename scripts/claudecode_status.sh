@@ -17,6 +17,19 @@ DEFAULT_IDLE_COLOR="colour196"      # red (tmux colour196 ≈ #ff0000) - アイ�
 DEFAULT_ICON_COLOR="colour135"      # purple (tmux colour135 ≈ #af5fff)
 DEFAULT_SEPARATOR=" | "             # ペイン間のセパレータ
 
+# Terminal emoji priority for sorting
+# Priority: 🍎(iTerm)=1, ⚡(WezTerm)=2, 👻(Ghostty)=3, 🪟(Windows Terminal)=4, ❓(other)=5
+get_terminal_priority() {
+    local emoji="$1"
+    case "$emoji" in
+        🍎) echo 1 ;;
+        ⚡) echo 2 ;;
+        👻) echo 3 ;;
+        🪟) echo 4 ;;
+        *)  echo 5 ;;
+    esac
+}
+
 # Cache configuration
 CACHE_DIR="/tmp"
 CACHE_FILE="$CACHE_DIR/claudecode_status_cache_$$"
@@ -39,7 +52,7 @@ main() {
         fi
     fi
 
-    # Get session details (新形式: pane_name:status|pane_name:status|...)
+    # Get session details (新形式: terminal_emoji:pane_index:project_name:status|...)
     local details
     details=$(get_session_details)
 
@@ -52,24 +65,66 @@ main() {
 
     # Load user configuration
     local working_dot idle_dot working_color idle_color separator
+    local show_terminal show_pane
     working_dot=$(get_tmux_option "@claudecode_working_dot" "$DEFAULT_WORKING_DOT")
     idle_dot=$(get_tmux_option "@claudecode_idle_dot" "$DEFAULT_IDLE_DOT")
     working_color=$(get_tmux_option "@claudecode_working_color" "$DEFAULT_WORKING_COLOR")
     idle_color=$(get_tmux_option "@claudecode_idle_color" "$DEFAULT_IDLE_COLOR")
     separator=$(get_tmux_option "@claudecode_separator" "$DEFAULT_SEPARATOR")
+    # 新オプション: ターミナル絵文字とペイン番号の表示制御
+    show_terminal=$(get_tmux_option "@claudecode_show_terminal" "on")
+    show_pane=$(get_tmux_option "@claudecode_show_pane" "on")
 
-    # Generate output: "● ● ○" 形式（ドットのみ）
+    # Generate output: "🍎#0 project-name... ●" 形式
     local output=""
     local first=1
 
-    # Parse details (project_name:status|project_name:status|...)
+    # Parse details (terminal_emoji:pane_index:project_name:status|...)
     IFS='|' read -ra entries <<< "$details"
-    for entry in "${entries[@]}"; do
-        local project_name status dot color
 
-        # Parse entry (project_name:status)
-        project_name="${entry%%:*}"
-        status="${entry##*:}"
+    # Sort entries: first by terminal emoji priority, then by pane index
+    # Build sortable list with priority prefix
+    local sort_input=""
+    for entry in "${entries[@]}"; do
+        local temp="${entry}"
+        local terminal_emoji="${temp%%:*}"
+        temp="${temp#*:}"
+        local pane_index="${temp%%:*}"
+
+        # Get priority from helper function
+        local priority
+        priority=$(get_terminal_priority "$terminal_emoji")
+
+        # Extract numeric part from pane_index (e.g., "#3" -> "3")
+        local pane_num="${pane_index#\#}"
+        # Default to 999 if empty or not a number
+        if ! [[ "$pane_num" =~ ^[0-9]+$ ]]; then
+            pane_num=999
+        fi
+
+        # Append to sort input: priority:pane_num:original_entry (with newline)
+        sort_input+="$(printf '%d:%03d:%s' "$priority" "$pane_num" "$entry")"$'\n'
+    done
+
+    # Sort and extract original entries
+    local sorted_entries=()
+    while IFS= read -r line; do
+        [ -n "$line" ] && sorted_entries+=("$line")
+    done < <(echo -n "$sort_input" | sort -t: -k1,1n -k2,2n | cut -d: -f3-)
+
+    # Use sorted entries
+    for entry in "${sorted_entries[@]}"; do
+        local terminal_emoji pane_index project_name status dot color prefix
+
+        # Parse entry (terminal_emoji:pane_index:project_name:status)
+        # 4つのフィールドに分割
+        local temp="${entry}"
+        terminal_emoji="${temp%%:*}"
+        temp="${temp#*:}"
+        pane_index="${temp%%:*}"
+        temp="${temp#*:}"
+        project_name="${temp%%:*}"
+        status="${temp##*:}"
 
         # 状態に応じてドットと色を選択
         if [ "$status" = "working" ]; then
@@ -80,6 +135,19 @@ main() {
             color="$idle_color"
         fi
 
+        # プレフィックスを構築（ターミナル絵文字 + ペイン番号）
+        prefix=""
+        if [ "$show_terminal" = "on" ] && [ -n "$terminal_emoji" ]; then
+            prefix+="$terminal_emoji"
+        fi
+        if [ "$show_pane" = "on" ] && [ -n "$pane_index" ]; then
+            prefix+="$pane_index"
+        fi
+        # プレフィックスがあれば末尾にスペースを追加
+        if [ -n "$prefix" ]; then
+            prefix+=" "
+        fi
+
         # セパレータを追加（最初以外）
         if [ "$first" = "1" ]; then
             first=0
@@ -88,8 +156,8 @@ main() {
             output+="$separator"
         fi
 
-        # プロジェクト名 + ドットを追加（例: "tmux-status... ●"）
-        output+="${project_name} #[fg=$color]${dot}#[default]"
+        # プレフィックス + プロジェクト名 + ドットを追加（例: "🍎#0 tmux-status... ●"）
+        output+="${prefix}${project_name} #[fg=$color]${dot}#[default]"
     done
 
     output+="  "  # Right margin

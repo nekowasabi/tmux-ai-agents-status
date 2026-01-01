@@ -373,7 +373,7 @@ get_session_states() {
 }
 
 # 全セッションの詳細情報を取得（新形式）
-# 戻り値: "project_name:status|project_name:status|..." 形式
+# 戻り値: "terminal_emoji:pane_index:project_name:status|..." 形式
 # statusは "working" または "idle"
 # 同じプロジェクト名でも異なるセッションの場合は番号付きで表示
 get_session_details() {
@@ -390,14 +390,17 @@ get_session_details() {
     local seen_project_names=""  # "name:count|name:count|..." 形式
 
     for pid in $pids; do
-        local pane_info pane_id project_name status
+        local pane_info pane_id pane_index project_name status terminal_emoji
 
         # ペイン情報を取得（重複チェック用）
         pane_info=$(get_pane_info_for_pid "$pid")
         if [ -z "$pane_info" ]; then
             pane_id="unknown_$$_$pid"
+            pane_index=""
         else
             pane_id="${pane_info%%:*}"
+            # ペインインデックスを取得
+            pane_index=$(get_pane_index "$pane_id")
         fi
 
         # 同じペインIDの重複を避ける
@@ -405,6 +408,9 @@ get_session_details() {
             continue
         fi
         seen_pane_ids+="|$pane_id|"
+
+        # ターミナル絵文字を取得（pane_idを渡してセッション特定に使用）
+        terminal_emoji=$(get_terminal_emoji "$pid" "$pane_id")
 
         # プロジェクト名を取得（作業ディレクトリ名）
         project_name=$(get_project_name_for_pid "$pid")
@@ -428,11 +434,11 @@ get_session_details() {
         # 状態を取得（ペインIDを渡す）
         status=$(check_process_status "$pid" "$pane_id")
 
-        # 詳細を追加
+        # 詳細を追加（新形式: terminal_emoji:pane_index:project_name:status）
         if [ -n "$details" ]; then
             details+="|"
         fi
-        details+="${project_name}:${status}"
+        details+="${terminal_emoji}:${pane_index}:${project_name}:${status}"
     done
 
     echo "$details"
