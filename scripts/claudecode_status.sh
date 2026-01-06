@@ -153,7 +153,6 @@ main() {
         # セパレータを追加（最初以外）
         if [ "$first" = "1" ]; then
             first=0
-            output+="  "  # Left margin
         else
             output+="$separator"
         fi
@@ -161,14 +160,13 @@ main() {
         # 色に応じた形式を調整
         local formatted_dot
         if [ -n "$color" ]; then
-            formatted_dot="#[fg=$color]${dot}#[default]"
+            formatted_dot="#[fg=$color]${dot}"
         else
             formatted_dot="${dot}"
         fi
 
         # プレフィックス + プロジェクト名 + ドットを追加（左右の囲み文字付き）
-        output+="${left_sep}${prefix}${project_name} ${formatted_dot}${right_sep}"
-        output+="$separator"
+        output+="${left_sep}${prefix}${project_name} ${formatted_dot}${right_sep}#[default]"
     done
 
     output+="  "  # Right margin
