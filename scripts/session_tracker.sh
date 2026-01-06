@@ -236,7 +236,7 @@ check_pane_activity() {
         last_change=$(get_last_change_time "$pane_id")
         if [ -n "$last_change" ]; then
             local diff=$((current_time - last_change))
-            if [ "$diff" -lt 30 ]; then
+            if [ "$diff" -lt "$WORKING_THRESHOLD" ]; then
                 echo "working"
             else
                 echo "idle"

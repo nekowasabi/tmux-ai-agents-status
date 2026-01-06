@@ -15,6 +15,7 @@ DEFAULT_WORKING_COLOR=""           # 作業中の色（空の場合は色なし�
 DEFAULT_IDLE_COLOR=""              # アイドル中の色（空の場合は色なし）
 DEFAULT_LEFT_SEP=""                # 左側の囲み文字
 DEFAULT_RIGHT_SEP=""               # 右側の囲み文字
+DEFAULT_WORKING_THRESHOLD=30       # 作業中と判定する時間閾値（秒）
 
 # Terminal emoji priority for sorting
 # Priority: 🍎(iTerm)=1, ⚡(WezTerm)=2, 👻(Ghostty)=3, 🪟(Windows Terminal)=4, ❓(other)=5
@@ -66,6 +67,7 @@ main() {
     local working_dot idle_dot working_color idle_color separator
     local show_terminal show_pane
     local left_sep right_sep
+    local working_threshold
     working_dot=$(get_tmux_option "@claudecode_working_dot" "$DEFAULT_WORKING_DOT")
     idle_dot=$(get_tmux_option "@claudecode_idle_dot" "$DEFAULT_IDLE_DOT")
     working_color=$(get_tmux_option "@claudecode_working_color" "$DEFAULT_WORKING_COLOR")
@@ -76,6 +78,10 @@ main() {
     # 新オプション: ターミナル絵文字とペイン番号の表示制御
     show_terminal=$(get_tmux_option "@claudecode_show_terminal" "on")
     show_pane=$(get_tmux_option "@claudecode_show_pane" "on")
+    working_threshold=$(get_tmux_option "@claudecode_working_threshold" "$DEFAULT_WORKING_THRESHOLD")
+
+    # Export working threshold for session_tracker.sh
+    export CLAUDECODE_WORKING_THRESHOLD="$working_threshold"
 
     # Generate output: "🍎#0 project-name... ●" 形式
     local output=""

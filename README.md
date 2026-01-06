@@ -76,6 +76,7 @@ set -g status-format[1] "#{claudecode_status}"
 | `@claudecode_terminal_ghostty` | `👻` | Ghosttyの絵文字 |
 | `@claudecode_terminal_windows` | `🪟` | Windows Terminalの絵文字 |
 | `@claudecode_terminal_unknown` | `❓` | 不明なターミナルの絵文字 |
+| `@claudecode_working_threshold` | `30` | working/idle判定の閾値（秒） |
 
 ### カスタマイズ例
 
@@ -88,6 +89,9 @@ set -g @claudecode_right_sep "]"
 # ターミナル絵文字をカスタマイズ
 set -g @claudecode_terminal_iterm "🖥️"
 set -g @claudecode_terminal_wezterm "W"
+
+# working/idle判定の閾値を変更（デフォルト: 30秒）
+set -g @claudecode_working_threshold "10"
 
 # 色をカスタマイズ（任意）
 set -g @claudecode_working_color "#f97316"
