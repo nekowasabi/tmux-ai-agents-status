@@ -1,209 +1,210 @@
 # tmux-claudecode-status
 
-tmuxのステータスバーにClaude Codeの実行状態をリアルタイム表示するプラグイン。複数のClaude Codeセッションを個別に追跡し、各セッションのworking/idle状態を色分けして表示します。
+A tmux plugin that displays Claude Code's execution status in real-time on the status bar. It tracks multiple Claude Code sessions individually and shows each session's working/idle state with color coding.
 
-## 特徴
+## Features
 
-- **複数セッション対応**: 複数のClaude Codeプロセスを同時に追跡
-- **状態区別**: working（作業中）とidle（待機中）を色で区別
-- **軽量・高速**: キャッシュ機能により毎秒の実行でも高速（< 50ms）
-- **カスタマイズ可能**: アイコン・色・ドット記号をカスタマイズ可能
-- **クロスプラットフォーム対応**: Linux/macOS対応
+- **Multiple Session Support**: Track multiple Claude Code processes simultaneously
+- **State Differentiation**: Distinguish between working and idle states with colors
+- **Lightweight & Fast**: Cache functionality enables high speed even with per-second execution (< 50ms)
+- **Customizable**: Customize icons, colors, and dot symbols
+- **Cross-Platform**: Supports Linux/macOS
 
-## インストール
+## Installation
 
-### TPMを使用した場合（推奨）
+### Using TPM (Recommended)
 
-`~/.tmux.conf` に以下を追加：
+Add the following to `~/.tmux.conf`:
 
 ```bash
 set -g @plugin 'takets/tmux-claudecode-status'
 ```
 
-その後、tmuxで `prefix + I` を実行（TPMプラグインリロード）。
+Then run `prefix + I` in tmux to reload TPM plugins.
 
-### 手動インストール
+### Manual Installation
 
-1. このリポジトリをクローン：
+1. Clone this repository:
 ```bash
 git clone https://github.com/takets/tmux-claudecode-status ~/.tmux/plugins/tmux-claudecode-status
 ```
 
-2. `~/.tmux.conf` に以下を追加：
+2. Add the following to `~/.tmux.conf`:
 ```bash
 run-shell "~/.tmux/plugins/tmux-claudecode-status/claudecode_status.tmux"
 ```
 
-3. tmuxを再起動。
+3. Restart tmux.
 
-## 設定
+## Configuration
 
-### デフォルト表示
+### Default Display
 
-デフォルトではステータスバーに `#{claudecode_status}` フォーマット文字列を設定する必要があります。
+By default, you need to set the `#{claudecode_status}` format string in your status bar.
 
-#### ステータスバーの表示位置設定
+#### Status Bar Position Settings
 
-`~/.tmux.conf` に以下のいずれかを追加：
+Add one of the following to `~/.tmux.conf`:
 
 ```bash
-# status-right に表示
+# Display in status-right
 set -g status-right "#{claudecode_status} #[default]%H:%M"
 
-# status-left に表示
+# Display in status-left
 set -g status-left "#{claudecode_status} #[default]"
 
-# status-format[1]（上部ステータスバー）に表示
+# Display in status-format[1] (top status bar)
 set -g status 2
 set -g status-format[1] "#{claudecode_status}"
 ```
 
-### カスタマイズオプション
+### Customization Options
 
-| オプション | デフォルト | 説明 |
-|-----------|-----------|------|
-| `@claudecode_working_dot` | `🤖` | working状態のドット（ロボット絵文字） |
-| `@claudecode_idle_dot` | `🔔` | idle状態のドット（ベル絵文字） |
-| `@claudecode_working_color` | `""` (空) | working状態の色（空=tmuxデフォルト） |
-| `@claudecode_idle_color` | `""` (空) | idle状態の色（空=tmuxデフォルト） |
-| `@claudecode_separator` | `" "` | セッション間のセパレータ |
-| `@claudecode_left_sep` | `""` (空) | 左囲み文字 |
-| `@claudecode_right_sep` | `""` (空) | 右囲み文字 |
-| `@claudecode_show_terminal` | `on` | ターミナル絵文字の表示 |
-| `@claudecode_show_pane` | `on` | ペイン番号の表示 |
-| `@claudecode_terminal_iterm` | `🍎` | iTerm/Terminalの絵文字 |
-| `@claudecode_terminal_wezterm` | `⚡` | WezTermの絵文字 |
-| `@claudecode_terminal_ghostty` | `👻` | Ghosttyの絵文字 |
-| `@claudecode_terminal_windows` | `🪟` | Windows Terminalの絵文字 |
-| `@claudecode_terminal_unknown` | `❓` | 不明なターミナルの絵文字 |
-| `@claudecode_working_threshold` | `30` | working/idle判定の閾値（秒） |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `@claudecode_working_dot` | `🤖` | Dot for working state (robot emoji) |
+| `@claudecode_idle_dot` | `🔔` | Dot for idle state (bell emoji) |
+| `@claudecode_working_color` | `""` (empty) | Color for working state (empty=tmux default) |
+| `@claudecode_idle_color` | `""` (empty) | Color for idle state (empty=tmux default) |
+| `@claudecode_separator` | `" "` | Separator between sessions |
+| `@claudecode_left_sep` | `""` (empty) | Left enclosure character |
+| `@claudecode_right_sep` | `""` (empty) | Right enclosure character |
+| `@claudecode_show_terminal` | `on` | Show terminal emoji |
+| `@claudecode_show_pane` | `on` | Show pane number |
+| `@claudecode_terminal_iterm` | `🍎` | Emoji for iTerm/Terminal |
+| `@claudecode_terminal_wezterm` | `⚡` | Emoji for WezTerm |
+| `@claudecode_terminal_ghostty` | `👻` | Emoji for Ghostty |
+| `@claudecode_terminal_windows` | `🪟` | Emoji for Windows Terminal |
+| `@claudecode_terminal_unknown` | `❓` | Emoji for unknown terminal |
+| `@claudecode_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
 
-### カスタマイズ例
+### Customization Examples
 
 ```bash
-# 囲み文字を追加
+# Add enclosure characters
 set -g @claudecode_left_sep "["
 set -g @claudecode_right_sep "]"
-# 結果: [🍎#0 project-name 🤖]
+# Result: [🍎#0 project-name 🤖]
 
-# ターミナル絵文字をカスタマイズ
+# Customize terminal emojis
 set -g @claudecode_terminal_iterm "🖥️"
 set -g @claudecode_terminal_wezterm "W"
 
-# working/idle判定の閾値を変更（デフォルト: 30秒）
+# Change working/idle detection threshold (default: 30 seconds)
 set -g @claudecode_working_threshold "10"
 
-# 色をカスタマイズ（任意）
+# Customize colors (optional)
 set -g @claudecode_working_color "#f97316"
 set -g @claudecode_idle_color "#22c55e"
 ```
 
-### 色設定について
+### About Color Settings
 
-色設定はデフォルトで空（tmuxテーマの色を継承）です。必要に応じて設定してください。
+Color settings are empty by default (inheriting tmux theme colors). Configure as needed.
 
-## 動作仕組み
+## How It Works
 
-### セッション検出
+### Session Detection
 
-1. `pgrep` でClaude Codeプロセス（プロセス名: `claude`）を検出
-2. Linux環境では `/proc/{pid}/fd` からdebugファイルを特定
-3. debugファイルの更新時刻（`~/.claude/debug/*.txt`）で状態判定
+1. Detects Claude Code processes (process name: `claude`) using `pgrep`
+2. On Linux, identifies debug files from `/proc/{pid}/fd`
+3. Determines state by debug file modification time (`~/.claude/debug/*.txt`)
 
-### 状態判定
+### State Determination
 
-- **working**: debugファイルが直近5秒以内に更新されたプロセス
-- **idle**: debugファイルの更新が5秒以上前のプロセス
+- **working**: Processes whose debug file was updated within the last 5 seconds
+- **idle**: Processes whose debug file hasn't been updated for more than 5 seconds
 
-デフォルトの閾値（5秒）は環境変数で変更可能：
+The default threshold (5 seconds) can be changed via environment variable:
 
 ```bash
-export CLAUDECODE_WORKING_THRESHOLD=10  # 10秒に変更
+export CLAUDECODE_WORKING_THRESHOLD=10  # Change to 10 seconds
 ```
 
-### キャッシュ機能
+### Cache Function
 
-パフォーマンス向上のため、ステータス出力は2秒間キャッシュされます。
+Status output is cached for 2 seconds for improved performance.
 
-## 表示例
+## Display Example
 
 ```
-  ●●○      # アイコン + working×2 + idle×1
+  ●●○      # icon + working×2 + idle×1
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### ステータスが表示されない
+### Status Not Displaying
 
-1. Claude Codeが実行されていることを確認：
+1. Verify Claude Code is running:
 ```bash
 pgrep claude
 ```
 
-2. tmuxの設定でステータスバーが有効か確認：
+2. Check if status bar is enabled in tmux:
 ```bash
 tmux show-option -g status
 ```
 
-3. ステータスフォーマットが正しく設定されているか確認：
+3. Verify status format is correctly configured:
 ```bash
 tmux show-option -g status-right
 ```
 
-### 状態が更新されない
+### Status Not Updating
 
-1. キャッシュファイルを削除：
+1. Delete cache files:
 ```bash
 rm -f /tmp/claudecode_status_cache_*
 ```
 
-2. debugファイルが存在するか確認：
+2. Check if debug files exist:
 ```bash
 ls -la ~/.claude/debug/
 ```
 
-## テスト実行
+## Running Tests
 
-プロジェクトのテストを実行：
+Run project tests:
 
 ```bash
-# 検出テスト
+# Detection test
 ./tests/test_detection.sh
 
-# 出力テスト
+# Output test
 ./tests/test_output.sh
 
-# ステータステスト
+# Status test
 ./tests/test_status.sh
 ```
 
-すべてのテストが PASS することを確認してください。
+Ensure all tests PASS.
 
-## ファイル構成
+## File Structure
 
 ```
 tmux-claudecode-status/
-├── claudecode_status.tmux      # TPMエントリーポイント
+├── claudecode_status.tmux      # TPM entry point
 ├── scripts/
-│   ├── shared.sh               # 共通ユーティリティ
-│   ├── session_tracker.sh       # セッション追跡ロジック
-│   └── claudecode_status.sh     # メイン出力スクリプト
+│   ├── shared.sh               # Common utilities
+│   ├── session_tracker.sh       # Session tracking logic
+│   └── claudecode_status.sh     # Main output script
 ├── tests/
-│   ├── test_detection.sh        # 検出機能テスト
-│   ├── test_status.sh           # ステータス判定テスト
-│   └── test_output.sh           # 出力フォーマットテスト
-└── README.md                    # このファイル
+│   ├── test_detection.sh        # Detection function tests
+│   ├── test_status.sh           # Status determination tests
+│   └── test_output.sh           # Output format tests
+├── README.md                    # This file
+└── README_ja.md                 # Japanese documentation
 ```
 
-## ライセンス
+## License
 
 MIT License
 
-## 貢献
+## Contributing
 
-バグ報告や機能提案はGitHub Issuesにお願いします。
+Please submit bug reports and feature requests to GitHub Issues.
 
-## 参考資料
+## References
 
 - [tmux Plugin Manager (TPM)](https://github.com/tmux-plugins/tpm)
 - [tmux Manual](https://manpages.debian.org/tmux.1)
