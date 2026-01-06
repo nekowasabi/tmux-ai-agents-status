@@ -166,7 +166,7 @@ main() {
         fi
 
         # プレフィックス + プロジェクト名 + ドットを追加（左右の囲み文字付き）
-        output+="${left_sep}${prefix}${project_name} ${formatted_dot}${right_sep}#[default]"
+        output+="${left_sep}${prefix}${project_name} ${formatted_dot}#[default]${right_sep}"
     done
 
     output+="  "  # Right margin
