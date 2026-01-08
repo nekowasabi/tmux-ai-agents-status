@@ -18,6 +18,9 @@ source "$CURRENT_DIR/session_tracker.sh"
 # バッチ処理キャッシュを初期化（高速化のため）
 init_batch_cache
 
+# 高速判定モードを有効化（TTY mtimeベースの軽量判定）
+FAST_MODE=1
+
 # Check for WSL environment
 if grep -qEi "(microsoft|wsl)" /proc/version 2>/dev/null; then
     echo "This feature is not supported on WSL" >&2
@@ -32,38 +35,35 @@ STATUS_IDLE="idle"
 
 # Generate list of Claude Code processes for fzf
 # Output format: pane_id|terminal_emoji|pane_index|project_name|status|display_line
-# 最適化版: バッチ取得したキャッシュを使用してps/tmux呼び出しを最小化
+# 超高速版: 1回のawk呼び出しで全情報を取得
 generate_process_list() {
-    local pids
-    pids=$(get_claude_pids)
+    # 一括取得した情報を処理
+    local batch_info
+    batch_info=$(get_all_claude_info_batch)
 
-    if [ -z "$pids" ]; then
+    if [ -z "$batch_info" ]; then
         return
-    fi
-
-    # lsofをバッチで実行（macOSのみ）
-    if [[ "$(uname)" == "Darwin" ]]; then
-        local pid_list
-        pid_list=$(echo "$pids" | tr ' ' ',' | sed 's/,$//')
-        init_lsof_cache "$pid_list"
     fi
 
     local seen_pane_ids=""
     local seen_project_names=""
+    local current_time
+    current_time=$(get_current_timestamp)
 
-    for pid in $pids; do
-        local pane_info pane_id pane_index project_name status terminal_emoji
+    # ステータスアイコンを事前取得
+    local working_icon idle_icon
+    working_icon=$(get_tmux_option_cached "@claudecode_working_dot" "working")
+    idle_icon=$(get_tmux_option_cached "@claudecode_idle_dot" "idle")
 
-        # Get pane info（バッチ版を使用）
-        pane_info=$(get_pane_info_for_pid_cached "$pid")
-        if [ -z "$pane_info" ]; then
-            pane_id="unknown_$$_$pid"
-            pane_index=""
-        else
-            pane_id="${pane_info%%:*}"
-            # Get pane index（バッチ版を使用）
-            pane_index=$(get_pane_index_cached "$pane_id")
-        fi
+    # ターミナル絵文字マッピングを事前取得
+    local emoji_iterm emoji_wezterm emoji_ghostty emoji_unknown
+    emoji_iterm=$(get_tmux_option_cached "@claudecode_terminal_iterm" "🍎")
+    emoji_wezterm=$(get_tmux_option_cached "@claudecode_terminal_wezterm" "⚡")
+    emoji_ghostty=$(get_tmux_option_cached "@claudecode_terminal_ghostty" "👻")
+    emoji_unknown=$(get_tmux_option_cached "@claudecode_terminal_unknown" "❓")
+
+    while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_name cwd; do
+        [ -z "$pane_id" ] && continue
 
         # Skip duplicates
         if [[ "$seen_pane_ids" == *"|$pane_id|"* ]]; then
@@ -71,11 +71,26 @@ generate_process_list() {
         fi
         seen_pane_ids+="|$pane_id|"
 
-        # Get terminal emoji（バッチ版を使用）
-        terminal_emoji=$(get_terminal_emoji_cached "$pid" "$pane_id")
+        # Terminal emoji変換
+        local terminal_emoji
+        case "$terminal_name" in
+            iTerm2|Terminal) terminal_emoji="$emoji_iterm" ;;
+            WezTerm) terminal_emoji="$emoji_wezterm" ;;
+            Ghostty) terminal_emoji="$emoji_ghostty" ;;
+            *) terminal_emoji="$emoji_unknown" ;;
+        esac
 
-        # Get project name（バッチ版を使用）
-        project_name=$(get_project_name_for_pid_cached "$pid")
+        # Pane index
+        local pane_index="#${window_index}"
+
+        # Project name（cwdから抽出）
+        local project_name="${cwd##*/}"
+        [ -z "$project_name" ] || [ "$project_name" = "/" ] && project_name="claude"
+
+        # 長すぎる場合は省略
+        if [ "${#project_name}" -gt 18 ]; then
+            project_name="${project_name:0:15}..."
+        fi
 
         # Handle duplicate project names
         local current_count=0
@@ -90,34 +105,29 @@ generate_process_list() {
             seen_project_names+="|${project_name}:1|"
         fi
 
-        # Get status
-        status=$(check_process_status "$pid" "$pane_id")
-
-        # Get status display
-        local status_display status_icon
-        if [ "$status" = "working" ]; then
-            status_icon=$(get_tmux_option "@claudecode_working_dot" "working")
-            status_display="$status_icon"
-        else
-            status_icon=$(get_tmux_option "@claudecode_idle_dot" "idle")
-            status_display="$status_icon"
+        # Status判定（TTY mtimeベース）
+        local status="idle"
+        if [ -n "$tty_path" ] && [ -e "$tty_path" ]; then
+            local tty_mtime
+            tty_mtime=$(get_file_mtime "$tty_path")
+            if [ -n "$tty_mtime" ]; then
+                local diff=$((current_time - tty_mtime))
+                [ "$diff" -lt "$WORKING_THRESHOLD" ] && status="working"
+            fi
         fi
 
-        # Get session name for additional context（バッチ版を使用）
-        local session_name
-        session_name=$(get_session_name_cached "$pane_id")
+        # Status display
+        local status_display
+        [ "$status" = "working" ] && status_display="$working_icon" || status_display="$idle_icon"
 
         # Format display line
-        # Format: terminal pane_index project_name [session] status
         local display_line="${terminal_emoji} ${pane_index} ${project_name}"
-        if [ -n "$session_name" ]; then
-            display_line+=" [$session_name]"
-        fi
+        [ -n "$session_name" ] && display_line+=" [$session_name]"
         display_line+=" ${status_display}"
 
         # Output: pane_id|terminal_emoji|pane_index|project_name|status|display_line
         echo "${pane_id}|${terminal_emoji}|${pane_index}|${project_name}|${status}|${display_line}"
-    done
+    done <<< "$batch_info"
 }
 
 # Sort process list by status (working first) and terminal priority
@@ -185,9 +195,9 @@ run_fzf_selection() {
         return 1
     fi
 
-    # Get fzf options from tmux
+    # Get fzf options from tmux（キャッシュ版を使用）
     local fzf_opts
-    fzf_opts=$(get_tmux_option "@claudecode_fzf_opts" "--height=40% --reverse --border --prompt=Select\\ Claude:\\ ")
+    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=40% --reverse --border --prompt=Select\\ Claude:\\ ")
 
     # Run fzf
     local selected

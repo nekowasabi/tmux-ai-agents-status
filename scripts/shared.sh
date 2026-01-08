@@ -4,12 +4,24 @@
 # バッチ処理用キャッシュ機能を含む（Bash 3.2互換）
 
 # ==============================================================================
+# 高速化用キャッシュ変数
+# ==============================================================================
+# OS判定をキャッシュ（unameの呼び出しを1回に削減）
+_CACHED_OS="${_CACHED_OS:-}"
+
+# FAST_MODE: select_claude.sh --list用の軽量モード
+# 1の場合、check_pane_activity()をスキップしてセッションファイル更新時刻のみで判定
+FAST_MODE="${FAST_MODE:-0}"
+
+# ==============================================================================
 # バッチ処理用キャッシュ変数（一時ファイルパス）
 # ==============================================================================
 BATCH_PROCESS_TREE_FILE=""
 BATCH_PANE_INFO_FILE=""
 BATCH_LSOF_OUTPUT_FILE=""
 BATCH_TERMINAL_CACHE_FILE=""
+BATCH_TMUX_OPTIONS_FILE=""
+BATCH_CLIENTS_CACHE_FILE=""
 BATCH_INITIALIZED=0
 
 # ==============================================================================
@@ -26,12 +38,16 @@ init_batch_cache() {
         return 0
     fi
 
-    # 一時ファイルを作成
-    BATCH_PROCESS_TREE_FILE=$(mktemp)
-    BATCH_PANE_INFO_FILE=$(mktemp)
-    BATCH_LSOF_OUTPUT_FILE=$(mktemp)
-    BATCH_TERMINAL_CACHE_FILE=$(mktemp)
-    BATCH_PID_PANE_MAP_FILE=$(mktemp)
+    # 一時ディレクトリを1回で作成し、その中にファイルを配置（mktemp呼び出し削減）
+    local batch_dir="/tmp/claudecode_batch_$$"
+    mkdir -p "$batch_dir"
+    BATCH_PROCESS_TREE_FILE="$batch_dir/ps"
+    BATCH_PANE_INFO_FILE="$batch_dir/panes"
+    BATCH_LSOF_OUTPUT_FILE="$batch_dir/lsof"
+    BATCH_TERMINAL_CACHE_FILE="$batch_dir/term"
+    BATCH_PID_PANE_MAP_FILE="$batch_dir/pidmap"
+    BATCH_TMUX_OPTIONS_FILE="$batch_dir/opts"
+    BATCH_CLIENTS_CACHE_FILE="$batch_dir/clients"
 
     # プロセスツリーを取得（1回の ps 呼び出し）
     ps -eo pid,ppid,comm 2>/dev/null > "$BATCH_PROCESS_TREE_FILE"
@@ -41,13 +57,88 @@ init_batch_cache() {
     # window_name も追加取得
     tmux list-panes -a -F "#{pane_id}"$'\t'"#{pane_pid}"$'\t'"#{session_name}"$'\t'"#{window_index}"$'\t'"#{pane_index}"$'\t'"#{pane_tty}"$'\t'"#{window_name}" 2>/dev/null > "$BATCH_PANE_INFO_FILE"
 
+    # tmuxオプションをバッチ取得（@claudecode_* オプション）
+    tmux show-options -g 2>/dev/null | grep "^@claudecode" > "$BATCH_TMUX_OPTIONS_FILE"
+
+    # tmuxクライアント情報をバッチ取得（セッション -> TTY マッピング）
+    tmux list-clients -F "#{client_session}"$'\t'"#{client_tty}"$'\t'"#{client_pid}" 2>/dev/null > "$BATCH_CLIENTS_CACHE_FILE"
+
     # PID -> pane_id マッピングを構築（一度のawk処理で全プロセスツリーを解析）
     _build_pid_pane_map
+
+    # macOSの場合、Claude PIDsのlsof結果をバッチ取得
+    if [[ "$(get_os)" == "Darwin" ]]; then
+        # プロセスツリーから "claude" コマンドのPIDを抽出
+        local claude_pids
+        claude_pids=$(awk '$3 == "claude" { print $1 }' "$BATCH_PROCESS_TREE_FILE" | tr '\n' ',' | sed 's/,$//')
+        if [ -n "$claude_pids" ]; then
+            init_lsof_cache "$claude_pids"
+        fi
+    fi
 
     # クリーンアップ用trapを設定
     trap cleanup_batch_cache EXIT
 
     BATCH_INITIALIZED=1
+
+    # ターミナル検出を事前実行（セッション単位でキャッシュ）
+    if [[ "$(get_os)" == "Darwin" ]]; then
+        _prebuild_terminal_cache
+    fi
+}
+
+# ターミナル検出を事前に実行してキャッシュに格納（内部関数）
+# awkで一括処理して高速化
+_prebuild_terminal_cache() {
+    # クライアントキャッシュとプロセスツリーから一括でターミナルを検出
+    if [ -z "$BATCH_CLIENTS_CACHE_FILE" ] || [ ! -f "$BATCH_CLIENTS_CACHE_FILE" ]; then
+        return
+    fi
+    if [ -z "$BATCH_PROCESS_TREE_FILE" ] || [ ! -f "$BATCH_PROCESS_TREE_FILE" ]; then
+        return
+    fi
+
+    # awkで一括処理: プロセスツリーとクライアント情報を結合してターミナルを検出
+    awk -F'\t' '
+    # 最初のファイル（プロセスツリー）を読み込み
+    FNR == NR {
+        gsub(/^[ \t]+/, "")
+        split($0, fields, /[ \t]+/)
+        pid = fields[1]
+        parent = fields[2]
+        comm = fields[3]
+        if (pid != "PID" && pid != "") {
+            ppid[pid] = parent
+            pcomm[pid] = comm
+        }
+        next
+    }
+    # 2番目のファイル（クライアント情報）を処理
+    {
+        session = $1
+        client_pid = $3
+        if (session == "" || client_pid == "") next
+
+        # 親プロセスを辿ってターミナルを検出
+        current = client_pid
+        for (depth = 0; depth < 10; depth++) {
+            if (current == "" || current == "1" || current == "0") break
+            comm = pcomm[current]
+            # ターミナル名を検出
+            if (comm ~ /iTerm|Terminal/) {
+                print session "\tiTerm2"
+                break
+            } else if (comm ~ /[Ww]ez[Tt]erm/) {
+                print session "\tWezTerm"
+                break
+            } else if (comm ~ /[Gg]hostty/) {
+                print session "\tGhostty"
+                break
+            }
+            current = ppid[current]
+        }
+    }
+    ' "$BATCH_PROCESS_TREE_FILE" "$BATCH_CLIENTS_CACHE_FILE" >> "$BATCH_TERMINAL_CACHE_FILE"
 }
 
 # PID -> pane_id マッピングを構築（内部関数）
@@ -96,17 +187,79 @@ _build_pid_pane_map() {
 get_pane_id_for_pid_direct() {
     local pid="$1"
     if [ -n "$BATCH_PID_PANE_MAP_FILE" ] && [ -f "$BATCH_PID_PANE_MAP_FILE" ]; then
-        awk -F'\t' -v pid="$pid" '$1 == pid { print $2; exit }' "$BATCH_PID_PANE_MAP_FILE"
+        # grepの方がawkより高速
+        grep "^${pid}	" "$BATCH_PID_PANE_MAP_FILE" 2>/dev/null | cut -f2
     fi
+}
+
+# 複数PIDの全情報を一括取得（FAST_MODE用の超高速版）
+# 戻り値: "pid|pane_id|session_name|window_index|tty_path|terminal|cwd" 形式の行リスト
+get_all_claude_info_batch() {
+    if [ "$BATCH_INITIALIZED" != "1" ]; then
+        return
+    fi
+
+    # awkで一括処理: 全キャッシュファイルを結合して必要な情報を抽出
+    awk '
+    BEGIN { FS="\t"; file_num=0 }
+    FNR==1 { file_num++ }
+
+    # ファイル1: PID -> pane_id マッピング
+    file_num==1 {
+        pid_pane[$1] = $2
+        next
+    }
+    # ファイル2: pane_id -> session_name, window_index, tty_path
+    file_num==2 {
+        pane_session[$1] = $3
+        pane_window[$1] = $4
+        pane_tty[$1] = $6
+        next
+    }
+    # ファイル3: session -> terminal
+    file_num==3 {
+        session_term[$1] = $2
+        next
+    }
+    # ファイル4: PID -> cwd (lsof output - space separated)
+    file_num==4 {
+        # lsof出力: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        split($0, f, /[ \t]+/)
+        if (f[4] == "cwd") {
+            lsof_cwd[f[2]] = f[9]
+        }
+        next
+    }
+    # ファイル5: プロセスツリー (claude PIDs抽出 - space separated)
+    file_num==5 {
+        gsub(/^[ \t]+/, "")
+        split($0, f, /[ \t]+/)
+        if (f[3] == "claude") {
+            claude_pids[f[1]] = 1
+        }
+        next
+    }
+    END {
+        for (pid in claude_pids) {
+            pane_id = pid_pane[pid]
+            if (pane_id == "") continue
+            session = pane_session[pane_id]
+            window = pane_window[pane_id]
+            tty = pane_tty[pane_id]
+            term = session_term[session]
+            cwd = lsof_cwd[pid]
+            if (cwd == "") cwd = "unknown"
+            # 出力: pid|pane_id|session_name|window_index|tty_path|terminal|cwd
+            print pid "|" pane_id "|" session "|" window "|" tty "|" term "|" cwd
+        }
+    }
+    ' "$BATCH_PID_PANE_MAP_FILE" "$BATCH_PANE_INFO_FILE" "$BATCH_TERMINAL_CACHE_FILE" "$BATCH_LSOF_OUTPUT_FILE" "$BATCH_PROCESS_TREE_FILE" 2>/dev/null
 }
 
 # バッチキャッシュのクリーンアップ
 cleanup_batch_cache() {
-    [ -n "$BATCH_PROCESS_TREE_FILE" ] && rm -f "$BATCH_PROCESS_TREE_FILE"
-    [ -n "$BATCH_PANE_INFO_FILE" ] && rm -f "$BATCH_PANE_INFO_FILE"
-    [ -n "$BATCH_LSOF_OUTPUT_FILE" ] && rm -f "$BATCH_LSOF_OUTPUT_FILE"
-    [ -n "$BATCH_TERMINAL_CACHE_FILE" ] && rm -f "$BATCH_TERMINAL_CACHE_FILE"
-    [ -n "$BATCH_PID_PANE_MAP_FILE" ] && rm -f "$BATCH_PID_PANE_MAP_FILE"
+    # ディレクトリごと削除（高速化）
+    [ -d "/tmp/claudecode_batch_$$" ] && rm -rf "/tmp/claudecode_batch_$$"
     BATCH_INITIALIZED=0
 }
 
@@ -226,6 +379,21 @@ get_terminal_for_session_cached() {
 }
 
 # ==============================================================================
+# バッチ版クライアント情報取得
+# ==============================================================================
+
+# キャッシュからセッションのclient_pidを取得
+# $1: session_name
+# 戻り値: client_pid（最初のクライアントのPID）
+get_client_pid_for_session_cached() {
+    local session="$1"
+    if [ -n "$BATCH_CLIENTS_CACHE_FILE" ] && [ -f "$BATCH_CLIENTS_CACHE_FILE" ]; then
+        # フォーマット: "session_name\tclient_tty\tclient_pid"
+        awk -F'\t' -v s="$session" '$1 == s { print $3; exit }' "$BATCH_CLIENTS_CACHE_FILE"
+    fi
+}
+
+# ==============================================================================
 # バッチ版lsof出力取得
 # ==============================================================================
 
@@ -235,9 +403,10 @@ init_lsof_cache() {
     local pid_list="$1"
     if [ -n "$BATCH_LSOF_OUTPUT_FILE" ] && [ -n "$pid_list" ]; then
         # lsof でFD "cwd" (current working directory) のみを取得
+        # -a: AND条件（-d cwd かつ -p pid_list）- これがないと全プロセスを返してしまう
         # -d cwd: FD field を cwd に限定
-        # -F pcn: PID, command, name を出力
-        lsof -d cwd -p "$pid_list" -F pn 2>/dev/null > "$BATCH_LSOF_OUTPUT_FILE"
+        # 出力形式: "COMMAND  PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME"
+        lsof -a -d cwd -p "$pid_list" 2>/dev/null > "$BATCH_LSOF_OUTPUT_FILE"
     fi
 }
 
@@ -247,14 +416,12 @@ init_lsof_cache() {
 get_cwd_from_lsof_cache() {
     local pid="$1"
     if [ -n "$BATCH_LSOF_OUTPUT_FILE" ] && [ -f "$BATCH_LSOF_OUTPUT_FILE" ] && [ -s "$BATCH_LSOF_OUTPUT_FILE" ]; then
-        # lsof -F pn 出力形式:
-        # pPID
-        # nPATH
-        # pPID
-        # nPATH
+        # lsof 通常出力形式（-F pn なし）:
+        # COMMAND  PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+        # claude  1234 user  cwd   DIR    1,4      640   12 /path/to/dir
+        # PIDが一致する行からNAME（最後のフィールド）を抽出
         awk -v pid="$pid" '
-            /^p/ { current_pid = substr($0, 2) }
-            /^n/ && current_pid == pid { print substr($0, 2); exit }
+            $2 == pid && $4 == "cwd" { print $NF; exit }
         ' "$BATCH_LSOF_OUTPUT_FILE"
     fi
 }
@@ -274,6 +441,31 @@ get_tmux_option() {
     fi
 }
 
+# バッチ版: tmuxオプションの値を取得（キャッシュ使用）
+# $1: オプション名
+# $2: デフォルト値（オプション）
+get_tmux_option_cached() {
+    local option="$1"
+    local default_value="$2"
+
+    # キャッシュが初期化されていない場合は元の関数を使用
+    if [ "$BATCH_INITIALIZED" != "1" ] || [ -z "$BATCH_TMUX_OPTIONS_FILE" ] || [ ! -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
+        get_tmux_option "$option" "$default_value"
+        return
+    fi
+
+    # キャッシュから取得
+    # フォーマット: "@claudecode_option_name value"
+    local option_value
+    option_value=$(awk -v opt="$option" '$1 == opt { $1=""; print substr($0, 2); exit }' "$BATCH_TMUX_OPTIONS_FILE")
+
+    if [ -z "$option_value" ]; then
+        echo "$default_value"
+    else
+        echo "$option_value"
+    fi
+}
+
 # tmuxオプションを設定
 # $1: オプション名
 # $2: 値
@@ -281,12 +473,20 @@ set_tmux_option() {
     tmux set-option -gq "$1" "$2"
 }
 
+# OS判定をキャッシュして返す（unameの呼び出しを最小化）
+get_os() {
+    if [ -z "$_CACHED_OS" ]; then
+        _CACHED_OS=$(uname)
+    fi
+    echo "$_CACHED_OS"
+}
+
 # クロスプラットフォーム対応のファイル更新時刻取得
 # $1: ファイルパス
 # 戻り値: Unixタイムスタンプ（秒）
 get_file_mtime() {
     local file="$1"
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS
         stat -f %m "$file" 2>/dev/null
     else
@@ -295,9 +495,13 @@ get_file_mtime() {
     fi
 }
 
-# 現在のUnixタイムスタンプを取得
+# 現在のUnixタイムスタンプを取得（EPOCHSECONDSがあれば使用）
 get_current_timestamp() {
-    date +%s
+    if [ -n "${EPOCHSECONDS:-}" ]; then
+        echo "$EPOCHSECONDS"
+    else
+        date +%s
+    fi
 }
 
 # Terminal emoji priority for sorting
@@ -329,8 +533,7 @@ get_status_priority() {
 _detect_terminal_from_pname() {
     local pname="$1"
     # basenameを取得（パスが含まれている場合）
-    local basename_pname
-    basename_pname=$(basename "$pname" 2>/dev/null)
+    local basename_pname="${pname##*/}"
 
     case "$basename_pname" in
         iTerm2|iTerm.app|iTerm)
@@ -367,7 +570,7 @@ get_terminal_emoji() {
     local pane_id="${2:-}"
     local terminal_name=""
 
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS: claudeプロセスのTTYからtmuxセッションを特定し、
         # そのセッションにアタッチしているクライアントの親プロセスからターミナルを検出
 
@@ -581,7 +784,7 @@ get_terminal_emoji_cached() {
         return
     fi
 
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS: セッション単位でキャッシュを確認
 
         # 方法1: pane_idが指定されている場合、そこからセッションを特定
@@ -595,8 +798,9 @@ get_terminal_emoji_cached() {
 
                 if [ -z "$terminal_name" ]; then
                     # キャッシュになければ検出してキャッシュ
+                    # バッチキャッシュから取得（tmux list-clients 呼び出し不要）
                     local client_pid
-                    client_pid=$(tmux list-clients -t "$session_name" -F '#{client_pid}' 2>/dev/null | head -1)
+                    client_pid=$(get_client_pid_for_session_cached "$session_name")
                     if [ -n "$client_pid" ]; then
                         local current_pid="$client_pid"
                         local max_depth=10
@@ -640,22 +844,22 @@ get_terminal_emoji_cached() {
         return
     fi
 
-    # 絵文字に変換（tmuxオプションから取得、設定がなければデフォルト値を使用）
+    # 絵文字に変換（キャッシュ版tmuxオプションから取得、設定がなければデフォルト値を使用）
     case "$terminal_name" in
         iTerm2|Terminal)
-            get_tmux_option "@claudecode_terminal_iterm" "🍎"
+            get_tmux_option_cached "@claudecode_terminal_iterm" "🍎"
             ;;
         WezTerm)
-            get_tmux_option "@claudecode_terminal_wezterm" "⚡"
+            get_tmux_option_cached "@claudecode_terminal_wezterm" "⚡"
             ;;
         Ghostty)
-            get_tmux_option "@claudecode_terminal_ghostty" "👻"
+            get_tmux_option_cached "@claudecode_terminal_ghostty" "👻"
             ;;
         WindowsTerminal)
-            get_tmux_option "@claudecode_terminal_windows" "🪟"
+            get_tmux_option_cached "@claudecode_terminal_windows" "🪟"
             ;;
         *)
-            get_tmux_option "@claudecode_terminal_unknown" "❓"
+            get_tmux_option_cached "@claudecode_terminal_unknown" "❓"
             ;;
     esac
 }

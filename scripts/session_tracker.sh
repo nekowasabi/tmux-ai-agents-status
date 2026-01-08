@@ -123,7 +123,7 @@ get_project_name_for_pid() {
     local cwd=""
 
     # OS判定でcwd取得方法を分岐
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS: lsofでcwdを取得
         cwd=$(lsof -p "$pid" 2>/dev/null | awk '$4 == "cwd" {print $9}')
     else
@@ -138,9 +138,9 @@ get_project_name_for_pid() {
         fi
     fi
 
-    # cwdからプロジェクト名を抽出
+    # cwdからプロジェクト名を抽出（basenameの代わりにパラメータ展開）
     if [ -n "$cwd" ] && [ "$cwd" != "/" ]; then
-        project_name=$(basename "$cwd")
+        project_name="${cwd##*/}"
     fi
 
     # 取得できない場合はデフォルト名
@@ -173,7 +173,7 @@ get_project_name_for_pid_cached() {
     fi
 
     # OS判定でcwd取得方法を分岐
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS: キャッシュからcwdを取得
         cwd=$(get_cwd_from_lsof_cache "$pid")
         # キャッシュにない場合はフォールバック
@@ -192,9 +192,9 @@ get_project_name_for_pid_cached() {
         fi
     fi
 
-    # cwdからプロジェクト名を抽出
+    # cwdからプロジェクト名を抽出（basenameの代わりにパラメータ展開）
     if [ -n "$cwd" ] && [ "$cwd" != "/" ]; then
-        project_name=$(basename "$cwd")
+        project_name="${cwd##*/}"
     fi
 
     # 取得できない場合はデフォルト名
@@ -368,6 +368,44 @@ check_pane_activity() {
     fi
 }
 
+# 高速版: TTY mtimeベースのペインアクティビティ検出
+# FAST_MODE用: tmux capture-pane + md5sum を使わず、TTYのmtimeのみで判定
+check_pane_activity_fast() {
+    local pane_id="$1"
+    local current_time
+    current_time=$(get_current_timestamp)
+
+    # ペインのTTYパスを取得（キャッシュ優先）
+    local tty_path
+    if [ -n "$BATCH_PANE_INFO_FILE" ] && [ -f "$BATCH_PANE_INFO_FILE" ]; then
+        tty_path=$(awk -F'\t' -v pid="$pane_id" '$1 == pid { print $6 }' "$BATCH_PANE_INFO_FILE")
+    else
+        tty_path=$(tmux display-message -p -t "$pane_id" '#{pane_tty}' 2>/dev/null)
+    fi
+
+    if [ -z "$tty_path" ] || [ ! -e "$tty_path" ]; then
+        echo "idle"
+        return
+    fi
+
+    # TTYのmtimeを取得
+    local current_mtime
+    current_mtime=$(get_file_mtime "$tty_path")
+
+    if [ -z "$current_mtime" ]; then
+        echo "idle"
+        return
+    fi
+
+    # mtimeが閾値内かチェック
+    local diff=$((current_time - current_mtime))
+    if [ "$diff" -lt "$WORKING_THRESHOLD" ]; then
+        echo "working"
+    else
+        echo "idle"
+    fi
+}
+
 # PIDからプロジェクトディレクトリパスを取得
 # $1: PID
 # 戻り値: ~/.claude/projects/ 内のディレクトリパス（見つからない場合は空）
@@ -376,9 +414,53 @@ get_project_session_dir() {
     local cwd=""
 
     # OS判定でcwd取得方法を分岐
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(get_os)" == "Darwin" ]]; then
         # macOS: lsofでcwdを取得
         cwd=$(lsof -p "$pid" 2>/dev/null | awk '$4 == "cwd" {print $9}')
+    else
+        # Linux: /proc/PID/cwdから取得
+        local cwd_link="/proc/$pid/cwd"
+        if [ -L "$cwd_link" ]; then
+            cwd=$(readlink "$cwd_link" 2>/dev/null)
+        fi
+    fi
+
+    if [ -n "$cwd" ]; then
+        # cwdをClaude Codeのプロジェクトディレクトリ名形式に変換
+        # 例: /home/takets/repos/foo -> -home-takets-repos-foo
+        local encoded_dir
+        encoded_dir=$(echo "$cwd" | sed 's|^/||; s|/|-|g; s|^|-|')
+        local project_dir="$HOME/.claude/projects/$encoded_dir"
+        if [ -d "$project_dir" ]; then
+            echo "$project_dir"
+            return
+        fi
+    fi
+
+    echo ""
+}
+
+# バッチ版: PIDからプロジェクトディレクトリパスを取得（lsofキャッシュ使用）
+# $1: PID
+# 戻り値: ~/.claude/projects/ 内のディレクトリパス（見つからない場合は空）
+get_project_session_dir_cached() {
+    local pid="$1"
+    local cwd=""
+
+    # キャッシュが初期化されていない場合は元の関数を使用
+    if [ "$BATCH_INITIALIZED" != "1" ]; then
+        get_project_session_dir "$pid"
+        return
+    fi
+
+    # OS判定でcwd取得方法を分岐
+    if [[ "$(get_os)" == "Darwin" ]]; then
+        # macOS: キャッシュからcwdを取得
+        cwd=$(get_cwd_from_lsof_cache "$pid")
+        # キャッシュにない場合はフォールバック
+        if [ -z "$cwd" ]; then
+            cwd=$(lsof -d cwd -p "$pid" 2>/dev/null | awk '$4 == "cwd" {print $NF}')
+        fi
     else
         # Linux: /proc/PID/cwdから取得
         local cwd_link="/proc/$pid/cwd"
@@ -408,6 +490,13 @@ get_project_session_dir() {
 check_process_status() {
     local pid="$1"
     local pane_id="${2:-}"  # オプショナル: デフォルト値を空文字に
+
+    # FAST_MODE: TTY mtimeのみで高速判定（select_claude.sh --list用）
+    if [ "$FAST_MODE" = "1" ] && [ -n "$pane_id" ]; then
+        check_pane_activity_fast "$pane_id"
+        return
+    fi
+
     local current_time
     current_time=$(get_current_timestamp)
 
@@ -430,8 +519,9 @@ check_process_status() {
     fi
 
     # 方法3: プロジェクトのセッションファイル（.jsonl）の更新時刻で判定
+    # バッチ版を使用してlsofキャッシュを共有
     local project_dir
-    project_dir=$(get_project_session_dir "$pid")
+    project_dir=$(get_project_session_dir_cached "$pid")
 
     if [ -n "$project_dir" ] && [ -d "$project_dir" ]; then
         # 最新の.jsonlファイルを取得
