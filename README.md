@@ -77,6 +77,8 @@ set -g status-format[1] "#{claudecode_status}"
 | `@claudecode_terminal_windows` | `🪟` | Emoji for Windows Terminal |
 | `@claudecode_terminal_unknown` | `❓` | Emoji for unknown terminal |
 | `@claudecode_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
+| `@claudecode_select_key` | `""` (empty) | Keybinding to open process selector (e.g., `C-g`) |
+| `@claudecode_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | fzf options for process selector |
 
 ### Customization Examples
 
@@ -93,6 +95,12 @@ set -g @claudecode_terminal_wezterm "W"
 # Change working/idle detection threshold (default: 30 seconds)
 set -g @claudecode_working_threshold "10"
 
+# Enable process selector with keybinding (requires fzf)
+set -g @claudecode_select_key "C-j"  # prefix + Ctrl-j to open selector
+
+# Customize fzf options for process selector
+set -g @claudecode_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
+
 # Customize colors (optional)
 set -g @claudecode_working_color "#f97316"
 set -g @claudecode_idle_color "#22c55e"
@@ -101,6 +109,34 @@ set -g @claudecode_idle_color "#22c55e"
 ### About Color Settings
 
 Color settings are empty by default (inheriting tmux theme colors). Configure as needed.
+
+### Process Selector Feature
+
+The process selector allows you to quickly switch between multiple Claude Code sessions using fzf.
+
+**Requirements:**
+- fzf (install with `brew install fzf` on macOS or `apt install fzf` on Ubuntu)
+- tmux 3.2+ for popup support (older versions use split-window fallback)
+
+**Setup:**
+```bash
+# Enable the process selector with a keybinding
+set -g @claudecode_select_key "C-j"
+```
+
+**Usage:**
+1. Press `prefix + Ctrl-j` (or your configured key) to open the selector
+2. Use fzf to filter and select a Claude Code process
+3. The selected process's terminal will be activated and focused
+
+**Command Line Usage:**
+```bash
+# Interactive selection
+~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh
+
+# List all Claude Code processes
+~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh --list
+```
 
 ## How It Works
 
@@ -187,7 +223,9 @@ tmux-claudecode-status/
 ├── scripts/
 │   ├── shared.sh               # Common utilities
 │   ├── session_tracker.sh       # Session tracking logic
-│   └── claudecode_status.sh     # Main output script
+│   ├── claudecode_status.sh     # Main output script
+│   ├── select_claude.sh         # Process selector UI (fzf)
+│   └── focus_session.sh         # Terminal focus & pane switch
 ├── tests/
 │   ├── test_detection.sh        # Detection function tests
 │   ├── test_status.sh           # Status determination tests
