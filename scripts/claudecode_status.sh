@@ -17,6 +17,16 @@ DEFAULT_LEFT_SEP=""                # 左側の囲み文字
 DEFAULT_RIGHT_SEP=""               # 右側の囲み文字
 DEFAULT_WORKING_THRESHOLD=30       # 作業中と判定する時間閾値（秒）
 
+# Status priority for sorting (working processes displayed first)
+get_status_priority() {
+    local status="$1"
+    case "$status" in
+        working) echo 0 ;;  # 動作中を優先
+        idle) echo 1 ;;
+        *) echo 2 ;;
+    esac
+}
+
 # Terminal emoji priority for sorting
 # Priority: 🍎(iTerm)=1, ⚡(WezTerm)=2, 👻(Ghostty)=3, 🪟(Windows Terminal)=4, ❓(other)=5
 get_terminal_priority() {
@@ -90,7 +100,7 @@ main() {
     # Parse details (terminal_emoji:pane_index:project_name:status|...)
     IFS='|' read -ra entries <<< "$details"
 
-    # Sort entries: first by terminal emoji priority, then by pane index
+    # Sort entries: first by status priority, then by terminal emoji priority, then by pane index
     # Build sortable list with priority prefix
     local sort_input=""
     for entry in "${entries[@]}"; do
@@ -98,10 +108,15 @@ main() {
         local terminal_emoji="${temp%%:*}"
         temp="${temp#*:}"
         local pane_index="${temp%%:*}"
+        temp="${temp#*:}"
+        local project_name="${temp%%:*}"
+        local status="${temp##*:}"
 
-        # Get priority from helper function
-        local priority
-        priority=$(get_terminal_priority "$terminal_emoji")
+        # Get priorities from helper functions
+        local status_priority
+        status_priority=$(get_status_priority "$status")
+        local terminal_priority
+        terminal_priority=$(get_terminal_priority "$terminal_emoji")
 
         # Extract numeric part from pane_index (e.g., "#3" -> "3")
         local pane_num="${pane_index#\#}"
@@ -110,15 +125,15 @@ main() {
             pane_num=999
         fi
 
-        # Append to sort input: priority:pane_num:original_entry (with newline)
-        sort_input+="$(printf '%d:%03d:%s' "$priority" "$pane_num" "$entry")"$'\n'
+        # Append to sort input: status_priority:terminal_priority:pane_num:original_entry (with newline)
+        sort_input+="$(printf '%d:%d:%03d:%s' "$status_priority" "$terminal_priority" "$pane_num" "$entry")"$'\n'
     done
 
     # Sort and extract original entries
     local sorted_entries=()
     while IFS= read -r line; do
         [ -n "$line" ] && sorted_entries+=("$line")
-    done < <(echo -n "$sort_input" | sort -t: -k1,1n -k2,2n | cut -d: -f3-)
+    done < <(echo -n "$sort_input" | sort -t: -k1,1n -k2,2n -k3,3n | cut -d: -f4-)
 
     # Use sorted entries
     for entry in "${sorted_entries[@]}"; do
