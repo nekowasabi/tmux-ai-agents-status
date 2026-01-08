@@ -17,28 +17,7 @@ DEFAULT_LEFT_SEP=""                # 左側の囲み文字
 DEFAULT_RIGHT_SEP=""               # 右側の囲み文字
 DEFAULT_WORKING_THRESHOLD=30       # 作業中と判定する時間閾値（秒）
 
-# Status priority for sorting (working processes displayed first)
-get_status_priority() {
-    local status="$1"
-    case "$status" in
-        working) echo 0 ;;  # 動作中を優先
-        idle) echo 1 ;;
-        *) echo 2 ;;
-    esac
-}
-
-# Terminal emoji priority for sorting
-# Priority: 🍎(iTerm)=1, ⚡(WezTerm)=2, 👻(Ghostty)=3, 🪟(Windows Terminal)=4, ❓(other)=5
-get_terminal_priority() {
-    local emoji="$1"
-    case "$emoji" in
-        🍎) echo 1 ;;
-        ⚡) echo 2 ;;
-        👻) echo 3 ;;
-        🪟) echo 4 ;;
-        *)  echo 5 ;;
-    esac
-}
+# Note: get_status_priority and get_terminal_priority are now in shared.sh
 
 # Cache configuration
 CACHE_DIR="/tmp"

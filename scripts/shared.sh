@@ -43,6 +43,29 @@ get_current_timestamp() {
     date +%s
 }
 
+# Terminal emoji priority for sorting
+# Priority: apple(iTerm)=1, lightning(WezTerm)=2, ghost(Ghostty)=3, window(Windows Terminal)=4, question(other)=5
+get_terminal_priority() {
+    local emoji="$1"
+    case "$emoji" in
+        *🍎*) echo 1 ;;
+        *⚡*) echo 2 ;;
+        *👻*) echo 3 ;;
+        *🪟*) echo 4 ;;
+        *)  echo 5 ;;
+    esac
+}
+
+# Status priority for sorting (working processes displayed first)
+get_status_priority() {
+    local status="$1"
+    case "$status" in
+        working) echo 0 ;;  # Working first
+        idle) echo 1 ;;
+        *) echo 2 ;;
+    esac
+}
+
 # プロセス名からターミナルアプリ名を判定するヘルパー関数
 # $1: プロセス名（フルパス可）
 # 戻り値: ターミナル名（iTerm2, WezTerm, Ghostty, Terminal）または空文字
