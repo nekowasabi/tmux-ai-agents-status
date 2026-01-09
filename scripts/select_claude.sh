@@ -23,54 +23,41 @@ FAST_MODE=1
 # working判定の閾値（秒）- TTY mtimeがこの秒数以内ならworking
 WORKING_THRESHOLD="${CLAUDECODE_WORKING_THRESHOLD:-5}"
 
-# Check for WSL environment
-if grep -qEi "(microsoft|wsl)" /proc/version 2>/dev/null; then
-    echo "This feature is not supported on WSL" >&2
-    exit 1
-fi
+# Note: WSL check removed for macOS optimization
 
-# Note: get_terminal_priority and get_status_priority are in shared.sh
-
-# Status emoji for display
-STATUS_WORKING="working"
-STATUS_IDLE="idle"
-
-# Generate list of Claude Code processes for fzf
+# Generate and sort list of Claude Code processes for fzf
 # Output format: pane_id|terminal_emoji|pane_index|project_name|status|display_line
-# 超高速版: 1回のawk呼び出しで全情報を取得（bashのwhileループを完全排除）
+# 超高速版: generate + sort を1つのawk呼び出しに統合
 generate_process_list() {
     # 一括取得した情報を処理
     local batch_info
     batch_info=$(get_all_claude_info_batch)
 
-    if [ -z "$batch_info" ]; then
-        return
-    fi
+    [ -z "$batch_info" ] && return
 
-    # ステータスアイコンとターミナル絵文字を一括取得（6回のawk呼び出しを1回に削減）
+    # ステータスアイコンとターミナル絵文字（キャッシュファイルから直接取得）
     local working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown
-    eval "$(get_tmux_options_bulk \
-        "@claudecode_working_dot=working" \
-        "@claudecode_idle_dot=idle" \
-        "@claudecode_terminal_iterm=🍎" \
-        "@claudecode_terminal_wezterm=⚡" \
-        "@claudecode_terminal_ghostty=👻" \
-        "@claudecode_terminal_unknown=❓")"
+    if [ -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
+        eval "$(awk '
+        /@claudecode_working_dot/ {gsub(/@claudecode_working_dot /,""); print "working_dot='\''"$0"'\''"}
+        /@claudecode_idle_dot/ {gsub(/@claudecode_idle_dot /,""); print "idle_dot='\''"$0"'\''"}
+        /@claudecode_terminal_iterm/ {gsub(/@claudecode_terminal_iterm /,""); print "terminal_iterm='\''"$0"'\''"}
+        /@claudecode_terminal_wezterm/ {gsub(/@claudecode_terminal_wezterm /,""); print "terminal_wezterm='\''"$0"'\''"}
+        /@claudecode_terminal_ghostty/ {gsub(/@claudecode_terminal_ghostty /,""); print "terminal_ghostty='\''"$0"'\''"}
+        /@claudecode_terminal_unknown/ {gsub(/@claudecode_terminal_unknown /,""); print "terminal_unknown='\''"$0"'\''"}
+        ' "$BATCH_TMUX_OPTIONS_FILE")"
+    fi
+    : "${working_dot:=working}" "${idle_dot:=idle}"
+    : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_unknown:=❓}"
 
-    # 現在時刻を取得
-    local current_time
-    current_time=$(get_current_timestamp)
-
-    # WORKING_THRESHOLDのデフォルト値
+    # 現在時刻とthreshold（EPOCHSECONDS使用で高速化）
+    local current_time="${EPOCHSECONDS:-$(date +%s)}"
     local threshold="${WORKING_THRESHOLD:-5}"
 
-    # TTY mtime情報はinit_batch_cacheで事前取得済み（BATCH_TTY_STAT_FILE）
-    # awkで一括処理（bashのwhileループを完全排除）
+    # TTY mtime + batch_info を1つのawkで処理し、ソート済みで出力
     {
-        if [ -n "$BATCH_TTY_STAT_FILE" ] && [ -f "$BATCH_TTY_STAT_FILE" ]; then
-            cat "$BATCH_TTY_STAT_FILE"
-            echo "---SEPARATOR---"
-        fi
+        [ -f "$BATCH_TTY_STAT_FILE" ] && cat "$BATCH_TTY_STAT_FILE"
+        echo "---SEPARATOR---"
         echo "$batch_info"
     } | awk -F'|' \
         -v working_icon="$working_dot" \
@@ -82,120 +69,78 @@ generate_process_list() {
         -v current_time="$current_time" \
         -v threshold="$threshold" \
     '
-    BEGIN {
-        in_data = 0
-    }
-    # セパレーター前はTTY mtime情報
-    /^---SEPARATOR---$/ {
-        in_data = 1
-        next
-    }
+    BEGIN { in_data = 0; count = 0 }
+    /^---SEPARATOR---$/ { in_data = 1; next }
     !in_data {
-        # TTY mtime情報: "/dev/ttysXXX mtime"
         split($0, parts, " ")
         tty_mtime[parts[1]] = parts[2]
         next
     }
     {
         pane_id = $2
-        session_name = $3
-        window_index = $4
-        tty_path = $5
-        terminal_name = $6
-        cwd = $7
+        if (pane_id == "" || pane_id in seen) next
+        seen[pane_id] = 1
 
-        if (pane_id == "") next
+        session_name = $3; window_index = $4; tty_path = $5
+        terminal_name = $6; cwd = $7
 
-        # Skip duplicates
-        if (pane_id in seen_panes) next
-        seen_panes[pane_id] = 1
-
-        # Terminal emoji変換
+        # Terminal emoji + priority
         if (terminal_name == "iTerm2" || terminal_name == "Terminal") {
-            terminal_emoji = emoji_iterm
+            emoji = emoji_iterm; tpri = 1
         } else if (terminal_name == "WezTerm") {
-            terminal_emoji = emoji_wezterm
+            emoji = emoji_wezterm; tpri = 2
         } else if (terminal_name == "Ghostty") {
-            terminal_emoji = emoji_ghostty
+            emoji = emoji_ghostty; tpri = 3
         } else {
-            terminal_emoji = emoji_unknown
+            emoji = emoji_unknown; tpri = 5
         }
 
-        # Pane index
-        pane_index = "#" window_index
+        # Project name
+        n = split(cwd, p, "/")
+        proj = p[n]
+        if (proj == "" || proj == "/") proj = "claude"
+        if (length(proj) > 18) proj = substr(proj, 1, 15) "..."
+        if (proj in pcnt) { pcnt[proj]++; proj = proj "#" pcnt[proj] }
+        else pcnt[proj] = 1
 
-        # Project name（cwdから抽出）
-        n = split(cwd, path_parts, "/")
-        project_name = path_parts[n]
-        if (project_name == "" || project_name == "/") project_name = "claude"
-
-        # 長すぎる場合は省略
-        if (length(project_name) > 18) {
-            project_name = substr(project_name, 1, 15) "..."
+        # Status (TTY mtime based)
+        status = "idle"; spri = 1
+        if (tty_path in tty_mtime && (current_time - tty_mtime[tty_path]) < threshold) {
+            status = "working"; spri = 0
         }
+        icon = (status == "working") ? working_icon : idle_icon
 
-        # Handle duplicate project names
-        if (project_name in project_counts) {
-            project_counts[project_name]++
-            project_name = project_name "#" project_counts[project_name]
-        } else {
-            project_counts[project_name] = 1
+        # Display line
+        pidx = "#" window_index
+        line = emoji " " pidx " " proj
+        if (session_name != "") line = line " [" session_name "]"
+        line = line " " icon
+
+        # Store for sorting
+        data[count] = pane_id "|" emoji "|" pidx "|" proj "|" status "|" line
+        sort_key[count] = sprintf("%d:%d:%03d", spri, tpri, window_index + 0)
+        count++
+    }
+    END {
+        # Simple insertion sort (typically <10 items)
+        for (i = 1; i < count; i++) {
+            key = sort_key[i]; val = data[i]
+            j = i - 1
+            while (j >= 0 && sort_key[j] > key) {
+                sort_key[j+1] = sort_key[j]
+                data[j+1] = data[j]
+                j--
+            }
+            sort_key[j+1] = key
+            data[j+1] = val
         }
-
-        # Status判定（TTY mtimeベース）
-        status = "idle"
-        if (tty_path != "" && tty_path in tty_mtime) {
-            diff = current_time - tty_mtime[tty_path]
-            if (diff < threshold) status = "working"
-        }
-
-        # Status display
-        status_display = (status == "working") ? working_icon : idle_icon
-
-        # Format display line
-        display_line = terminal_emoji " " pane_index " " project_name
-        if (session_name != "") display_line = display_line " [" session_name "]"
-        display_line = display_line " " status_display
-
-        # Output: pane_id|terminal_emoji|pane_index|project_name|status|display_line
-        print pane_id "|" terminal_emoji "|" pane_index "|" project_name "|" status "|" display_line
+        for (i = 0; i < count; i++) print data[i]
     }
     '
 }
 
-# Sort process list by status (working first) and terminal priority
-# 高速版: awkでソートキーを付与し、sortで一括処理
-sort_process_list() {
-    awk -F'|' '
-    {
-        pane_id = $1
-        terminal_emoji = $2
-        pane_index = $3
-        project_name = $4
-        status = $5
-        display_line = $6
-
-        # Status priority (working=0, idle=1)
-        status_priority = (status == "working") ? 0 : 1
-
-        # Terminal priority
-        if (index(terminal_emoji, "🍎") > 0) terminal_priority = 1
-        else if (index(terminal_emoji, "⚡") > 0) terminal_priority = 2
-        else if (index(terminal_emoji, "👻") > 0) terminal_priority = 3
-        else if (index(terminal_emoji, "🪟") > 0) terminal_priority = 4
-        else terminal_priority = 5
-
-        # Pane number
-        pane_num = substr(pane_index, 2)
-        if (pane_num !~ /^[0-9]+$/) pane_num = 999
-
-        # Output with sort key
-        printf "%d:%d:%03d|%s|%s|%s|%s|%s|%s\n", \
-            status_priority, terminal_priority, pane_num, \
-            pane_id, terminal_emoji, pane_index, project_name, status, display_line
-    }
-    ' | sort -t: -k1,1n -k2,2n -k3,3n | cut -d'|' -f2-
-}
+# sort_process_list is now integrated into generate_process_list
+sort_process_list() { cat; }
 
 # Run fzf selection
 run_fzf_selection() {

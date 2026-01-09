@@ -18,7 +18,6 @@ FAST_MODE="${FAST_MODE:-0}"
 # ==============================================================================
 BATCH_PROCESS_TREE_FILE=""
 BATCH_PANE_INFO_FILE=""
-BATCH_LSOF_OUTPUT_FILE=""
 BATCH_TERMINAL_CACHE_FILE=""
 BATCH_TMUX_OPTIONS_FILE=""
 BATCH_CLIENTS_CACHE_FILE=""
@@ -34,18 +33,17 @@ BATCH_PID_PANE_MAP_FILE=""
 
 # バッチ処理の初期化（全キャッシュを一度に作成）
 # select_claude.sh の先頭で呼び出し
-# 高速化: ps/lsof/tmuxコマンドを最大限並列実行
+# 高速化: 全外部コマンドを1フェーズで並列実行（Phase分離を廃止）
 init_batch_cache() {
     if [ "$BATCH_INITIALIZED" = "1" ]; then
         return 0
     fi
 
-    # 一時ディレクトリを1回で作成し、その中にファイルを配置（mktemp呼び出し削減）
+    # 一時ディレクトリを1回で作成
     local batch_dir="/tmp/claudecode_batch_$$"
     mkdir -p "$batch_dir"
     BATCH_PROCESS_TREE_FILE="$batch_dir/ps"
     BATCH_PANE_INFO_FILE="$batch_dir/panes"
-    BATCH_LSOF_OUTPUT_FILE="$batch_dir/lsof"
     BATCH_TERMINAL_CACHE_FILE="$batch_dir/term"
     BATCH_PID_PANE_MAP_FILE="$batch_dir/pidmap"
     BATCH_TMUX_OPTIONS_FILE="$batch_dir/opts"
@@ -53,82 +51,49 @@ init_batch_cache() {
     BATCH_TTY_STAT_FILE="$batch_dir/ttystat"
 
     # ========================================
-    # Phase 1: 外部コマンドを並列実行（約100ms削減）
+    # 全外部コマンドを並列実行（Phase統合で待機時間削減）
     # ========================================
 
-    # プロセスツリーを取得（バックグラウンド）
+    # プロセスツリー取得
     ps -eo pid,ppid,comm 2>/dev/null > "$BATCH_PROCESS_TREE_FILE" &
     local ps_pid=$!
 
-    # tmuxペイン情報を取得（バックグラウンド）
-    # タブ区切りで出力（$'\t' を使用してリテラルタブを挿入）
-    # window_name も追加取得
-    tmux list-panes -a -F "#{pane_id}"$'\t'"#{pane_pid}"$'\t'"#{session_name}"$'\t'"#{window_index}"$'\t'"#{pane_index}"$'\t'"#{pane_tty}"$'\t'"#{window_name}" 2>/dev/null > "$BATCH_PANE_INFO_FILE" &
+    # tmuxペイン情報（pane_current_pathも取得）
+    tmux list-panes -a -F "#{pane_id}"$'\t'"#{pane_pid}"$'\t'"#{session_name}"$'\t'"#{window_index}"$'\t'"#{pane_index}"$'\t'"#{pane_tty}"$'\t'"#{pane_current_path}" 2>/dev/null > "$BATCH_PANE_INFO_FILE" &
     local panes_pid=$!
 
-    # tmuxオプションをバッチ取得（バックグラウンド）
+    # tmuxオプション
     tmux show-options -g 2>/dev/null | grep "^@claudecode" > "$BATCH_TMUX_OPTIONS_FILE" &
     local opts_pid=$!
 
-    # tmuxクライアント情報をバッチ取得（バックグラウンド）
+    # tmuxクライアント情報
     tmux list-clients -F "#{client_session}"$'\t'"#{client_tty}"$'\t'"#{client_pid}" 2>/dev/null > "$BATCH_CLIENTS_CACHE_FILE" &
     local clients_pid=$!
 
-    # 全ての並列処理を待機
+    # 基本コマンドを待機
     wait $ps_pid $panes_pid $opts_pid $clients_pid
 
     # ========================================
-    # Phase 2: ps依存処理を並列実行（約80ms削減）
+    # 後処理（awk統合処理）を並列実行
     # ========================================
 
-    # lsofとpid_pane_mapを並列で実行
-    local lsof_pid=""
-    if [[ "$(get_os)" == "Darwin" ]]; then
-        # プロセスツリーから "claude" コマンドのPIDを抽出してlsof実行
-        {
-            local claude_pids
-            claude_pids=$(awk '$3 == "claude" { print $1 }' "$BATCH_PROCESS_TREE_FILE" | tr '\n' ',' | sed 's/,$//')
-            if [ -n "$claude_pids" ]; then
-                lsof -a -d cwd -p "$claude_pids" 2>/dev/null > "$BATCH_LSOF_OUTPUT_FILE"
-            else
-                touch "$BATCH_LSOF_OUTPUT_FILE"
-            fi
-        } &
-        lsof_pid=$!
-    fi
-
-    # PID -> pane_id マッピングを構築（一度のawk処理で全プロセスツリーを解析）
+    # PID -> pane_id マッピング + ターミナル検出 + TTY stat を並列実行
     _build_pid_pane_map &
     local pidmap_pid=$!
 
-    # ターミナル検出を事前実行（セッション単位でキャッシュ）- 並列実行
-    local termcache_pid=""
-    if [[ "$(get_os)" == "Darwin" ]]; then
-        _prebuild_terminal_cache &
-        termcache_pid=$!
-    fi
+    # ターミナル検出
+    _prebuild_terminal_cache &
+    local termcache_pid=$!
 
-    # TTY mtime を一括取得（pane情報から全TTYパスを抽出してstat）- 並列実行
-    local ttystat_pid=""
-    if [[ "$(get_os)" == "Darwin" ]]; then
-        {
-            # pane情報の6列目がTTYパス
-            awk -F'\t' '{print $6}' "$BATCH_PANE_INFO_FILE" 2>/dev/null | \
-                grep -v '^$' | sort -u | \
-                xargs stat -f "%N %m" 2>/dev/null > "$BATCH_TTY_STAT_FILE"
-        } &
-        ttystat_pid=$!
-    fi
+    # TTY mtime一括取得
+    awk -F'\t' 'NF>=6 && $6!="" {print $6}' "$BATCH_PANE_INFO_FILE" 2>/dev/null | \
+        sort -u | xargs stat -f "%N %m" 2>/dev/null > "$BATCH_TTY_STAT_FILE" &
+    local ttystat_pid=$!
 
-    # Phase 2の並列処理を待機
-    wait $pidmap_pid
-    [ -n "$lsof_pid" ] && wait $lsof_pid
-    [ -n "$termcache_pid" ] && wait $termcache_pid
-    [ -n "$ttystat_pid" ] && wait $ttystat_pid
+    # 後処理を待機
+    wait $pidmap_pid $termcache_pid $ttystat_pid 2>/dev/null
 
-    # クリーンアップ用trapを設定
     trap cleanup_batch_cache EXIT
-
     BATCH_INITIALIZED=1
 }
 
@@ -187,39 +152,31 @@ _prebuild_terminal_cache() {
 }
 
 # PID -> pane_id マッピングを構築（内部関数）
-# 全プロセスの祖先を辿り、pane_pidにマッチするものをマッピング
+# claudeプロセスのみを対象に祖先を辿り、pane_pidにマッチするものをマッピング
 _build_pid_pane_map() {
-    # awkで効率的にマッピングを構築
-    # FNR==NR で最初のファイル（ペイン情報）を処理
+    # claudeプロセスのみを対象にすることで高速化
     awk -F'\t' '
-    # 最初のファイル（ペイン情報）を読み込み
     FNR == NR {
         pane_pids[$2] = $1  # pane_pid -> pane_id
         next
     }
-    # 2番目のファイル（プロセスツリー）を読み込み
     {
-        # 空白で区切られたps出力を処理
         gsub(/^[ \t]+/, "")
-        split($0, fields, /[ \t]+/)
-        pid = fields[1]
-        parent = fields[2]
-        if (pid != "PID" && pid != "") {
+        split($0, f, /[ \t]+/)
+        pid = f[1]; parent = f[2]; comm = f[3]
+        if (pid != "" && pid != "PID") {
             ppid[pid] = parent
+            if (comm == "claude") claude[pid] = 1
         }
     }
     END {
-        # 各プロセスについて祖先を辿り、pane_pidにマッチしたらマッピング
-        for (pid in ppid) {
+        # claudeプロセスのみ祖先を辿る
+        for (pid in claude) {
             current = pid
-            depth = 0
-            while (depth < 20 && current != "" && current != "1" && current != "0") {
-                if (current in pane_pids) {
-                    print pid "\t" pane_pids[current]
-                    break
-                }
+            for (d = 0; d < 20; d++) {
+                if (current in pane_pids) { print pid "\t" pane_pids[current]; break }
+                if (current == "" || current == "1" || current == "0") break
                 current = ppid[current]
-                depth++
             }
         }
     }
@@ -240,65 +197,23 @@ get_pane_id_for_pid_direct() {
 # 複数PIDの全情報を一括取得（FAST_MODE用の超高速版）
 # 戻り値: "pid|pane_id|session_name|window_index|tty_path|terminal|cwd" 形式の行リスト
 get_all_claude_info_batch() {
-    if [ "$BATCH_INITIALIZED" != "1" ]; then
-        return
-    fi
+    [ "$BATCH_INITIALIZED" != "1" ] && return
 
-    # awkで一括処理: 全キャッシュファイルを結合して必要な情報を抽出
+    # awkで一括処理: 全キャッシュファイルを結合
     awk '
-    BEGIN { FS="\t"; file_num=0 }
-    FNR==1 { file_num++ }
-
-    # ファイル1: PID -> pane_id マッピング
-    file_num==1 {
-        pid_pane[$1] = $2
-        next
-    }
-    # ファイル2: pane_id -> session_name, window_index, tty_path
-    file_num==2 {
-        pane_session[$1] = $3
-        pane_window[$1] = $4
-        pane_tty[$1] = $6
-        next
-    }
-    # ファイル3: session -> terminal
-    file_num==3 {
-        session_term[$1] = $2
-        next
-    }
-    # ファイル4: PID -> cwd (lsof output - space separated)
-    file_num==4 {
-        # lsof出力: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-        split($0, f, /[ \t]+/)
-        if (f[4] == "cwd") {
-            lsof_cwd[f[2]] = f[9]
-        }
-        next
-    }
-    # ファイル5: プロセスツリー (claude PIDs抽出 - space separated)
-    file_num==5 {
-        gsub(/^[ \t]+/, "")
-        split($0, f, /[ \t]+/)
-        if (f[3] == "claude") {
-            claude_pids[f[1]] = 1
-        }
-        next
-    }
+    BEGIN { FS="\t"; fnum=0 }
+    FNR==1 { fnum++ }
+    fnum==1 { pid_pane[$1]=$2; next }
+    fnum==2 { pane_session[$1]=$3; pane_window[$1]=$4; pane_tty[$1]=$6; pane_cwd[$1]=$7; next }
+    fnum==3 { session_term[$1]=$2; next }
+    fnum==4 { gsub(/^[ \t]+/,""); split($0,f,/[ \t]+/); if(f[3]=="claude") claude_pids[f[1]]=1 }
     END {
-        for (pid in claude_pids) {
-            pane_id = pid_pane[pid]
-            if (pane_id == "") continue
-            session = pane_session[pane_id]
-            window = pane_window[pane_id]
-            tty = pane_tty[pane_id]
-            term = session_term[session]
-            cwd = lsof_cwd[pid]
-            if (cwd == "") cwd = "unknown"
-            # 出力: pid|pane_id|session_name|window_index|tty_path|terminal|cwd
-            print pid "|" pane_id "|" session "|" window "|" tty "|" term "|" cwd
+        for(pid in claude_pids) {
+            p=pid_pane[pid]; if(p=="") continue
+            s=pane_session[p]; c=pane_cwd[p]; if(c=="") c="unknown"
+            print pid"|"p"|"s"|"pane_window[p]"|"pane_tty[p]"|"session_term[s]"|"c
         }
-    }
-    ' "$BATCH_PID_PANE_MAP_FILE" "$BATCH_PANE_INFO_FILE" "$BATCH_TERMINAL_CACHE_FILE" "$BATCH_LSOF_OUTPUT_FILE" "$BATCH_PROCESS_TREE_FILE" 2>/dev/null
+    }' "$BATCH_PID_PANE_MAP_FILE" "$BATCH_PANE_INFO_FILE" "$BATCH_TERMINAL_CACHE_FILE" "$BATCH_PROCESS_TREE_FILE" 2>/dev/null
 }
 
 # バッチキャッシュのクリーンアップ
