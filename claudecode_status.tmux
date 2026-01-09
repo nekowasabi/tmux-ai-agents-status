@@ -58,10 +58,11 @@ setup_select_keybinding() {
     fi
 
     local select_script="$CURRENT_DIR/scripts/select_claude.sh"
+    local launcher_script="$CURRENT_DIR/scripts/select_claude_launcher.sh"
 
     if [ "$use_popup" = true ]; then
-        # Use popup for modern tmux
-        tmux bind-key "$select_key" popup -E -w 60% -h 40% "$select_script"
+        # Use launcher that prepares data BEFORE popup (prevents empty window flicker)
+        tmux bind-key "$select_key" run-shell "$launcher_script"
     else
         # Fallback to split-window for older tmux
         tmux bind-key "$select_key" split-window -v "$select_script"

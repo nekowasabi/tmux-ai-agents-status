@@ -14,8 +14,22 @@
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/shared.sh"
 
-# バッチ処理キャッシュを初期化（高速化のため）
-init_batch_cache
+# 共有キャッシュを確認（claudecode_status.shが生成したもの）
+# 新鮮なキャッシュがあればバッチ初期化をスキップして高速化
+# 最適化版: 1回のファイル読み込みで全フィールドを取得
+SHARED_CACHE_DATA=""
+SHARED_CACHE_OPTIONS=""
+SHARED_CACHE_TTY_STAT=""
+if read_shared_cache_all; then
+    SHARED_CACHE_DATA="$_SHARED_CACHE_PROCESSES"
+    SHARED_CACHE_OPTIONS="$_SHARED_CACHE_OPTIONS"
+    SHARED_CACHE_TTY_STAT="$_SHARED_CACHE_TTY_STAT"
+fi
+
+# 共有キャッシュがない場合のみバッチ処理キャッシュを初期化
+if [ -z "$SHARED_CACHE_DATA" ]; then
+    init_batch_cache
+fi
 
 # 高速判定モードを有効化（TTY mtimeベースの軽量判定）
 FAST_MODE=1
@@ -28,16 +42,25 @@ WORKING_THRESHOLD="${CLAUDECODE_WORKING_THRESHOLD:-5}"
 # Generate and sort list of Claude Code processes for fzf
 # Output format: pane_id|terminal_emoji|pane_index|project_name|status|display_line
 # 超高速版: generate + sort を1つのawk呼び出しに統合
+# 共有キャッシュがあればそれを使用し、なければバッチ情報を取得
 generate_process_list() {
-    # 一括取得した情報を処理
+    # 共有キャッシュがあればそれを使用（init_batch_cacheをスキップ可能）
     local batch_info
-    batch_info=$(get_all_claude_info_batch)
+    if [ -n "$SHARED_CACHE_DATA" ]; then
+        batch_info="$SHARED_CACHE_DATA"
+    else
+        batch_info=$(get_all_claude_info_batch)
+    fi
 
     [ -z "$batch_info" ] && return
 
-    # ステータスアイコンとターミナル絵文字（キャッシュファイルから直接取得）
+    # ステータスアイコンとターミナル絵文字を取得
+    # 優先順位: 1.共有キャッシュ 2.バッチキャッシュファイル 3.tmux直接取得
     local working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown
-    if [ -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
+    if [ -n "$SHARED_CACHE_OPTIONS" ]; then
+        # 共有キャッシュからオプションを取得（最速）
+        IFS=$'\t' read -r working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown <<< "$SHARED_CACHE_OPTIONS"
+    elif [ -n "$BATCH_TMUX_OPTIONS_FILE" ] && [ -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
         eval "$(awk '
         /@claudecode_working_dot/ {gsub(/@claudecode_working_dot /,""); print "working_dot='\''"$0"'\''"}
         /@claudecode_idle_dot/ {gsub(/@claudecode_idle_dot /,""); print "idle_dot='\''"$0"'\''"}
@@ -46,6 +69,14 @@ generate_process_list() {
         /@claudecode_terminal_ghostty/ {gsub(/@claudecode_terminal_ghostty /,""); print "terminal_ghostty='\''"$0"'\''"}
         /@claudecode_terminal_unknown/ {gsub(/@claudecode_terminal_unknown /,""); print "terminal_unknown='\''"$0"'\''"}
         ' "$BATCH_TMUX_OPTIONS_FILE")"
+    else
+        # フォールバック: tmuxから直接取得
+        working_dot=$(get_tmux_option "@claudecode_working_dot" "working")
+        idle_dot=$(get_tmux_option "@claudecode_idle_dot" "idle")
+        terminal_iterm=$(get_tmux_option "@claudecode_terminal_iterm" "🍎")
+        terminal_wezterm=$(get_tmux_option "@claudecode_terminal_wezterm" "⚡")
+        terminal_ghostty=$(get_tmux_option "@claudecode_terminal_ghostty" "👻")
+        terminal_unknown=$(get_tmux_option "@claudecode_terminal_unknown" "❓")
     fi
     : "${working_dot:=working}" "${idle_dot:=idle}"
     : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_unknown:=❓}"
@@ -54,9 +85,25 @@ generate_process_list() {
     local current_time="${EPOCHSECONDS:-$(date +%s)}"
     local threshold="${WORKING_THRESHOLD:-5}"
 
+    # TTY mtime を取得（優先順位: 1.共有キャッシュ 2.バッチキャッシュ 3.リアルタイム）
+    local tty_stat_data=""
+    if [ -n "$SHARED_CACHE_TTY_STAT" ]; then
+        # 共有キャッシュから取得（セミコロン区切りを改行に変換）
+        tty_stat_data=$(echo "$SHARED_CACHE_TTY_STAT" | tr ';' '\n')
+    elif [ -n "$BATCH_TTY_STAT_FILE" ] && [ -f "$BATCH_TTY_STAT_FILE" ]; then
+        tty_stat_data=$(cat "$BATCH_TTY_STAT_FILE")
+    else
+        # フォールバック: batch_infoからTTYパスを抽出してstatを実行
+        local tty_paths
+        tty_paths=$(echo "$batch_info" | awk -F'|' '{print $5}' | sort -u | grep -v '^$')
+        if [ -n "$tty_paths" ]; then
+            tty_stat_data=$(echo "$tty_paths" | xargs stat -f "%N %m" 2>/dev/null)
+        fi
+    fi
+
     # TTY mtime + batch_info を1つのawkで処理し、ソート済みで出力
     {
-        [ -f "$BATCH_TTY_STAT_FILE" ] && cat "$BATCH_TTY_STAT_FILE"
+        [ -n "$tty_stat_data" ] && echo "$tty_stat_data"
         echo "---SEPARATOR---"
         echo "$batch_info"
     } | awk -F'|' \
@@ -179,7 +226,8 @@ run_fzf_selection() {
     # Get fzf options from tmux（キャッシュ版を使用）
     local fzf_opts
     # Note: --border removed because tmux popup already provides a border
-    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --prompt=Select\\ Claude:\\ ")
+    # --no-clear prevents screen flicker on startup
+    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\\ Claude:\\ ")
 
     # Run fzf
     local selected

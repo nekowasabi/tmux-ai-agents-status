@@ -41,9 +41,20 @@ main() {
         fi
     fi
 
+    # バッチキャッシュを初期化（select_claude.sh用の共有キャッシュ生成のため）
+    init_batch_cache
+
     # Get session details (新形式: terminal_emoji:pane_index:project_name:status|...)
     local details
     details=$(get_session_details)
+
+    # select_claude.sh用の共有キャッシュを更新
+    # get_all_claude_info_batch()のデータを書き出す
+    local batch_info
+    batch_info=$(get_all_claude_info_batch)
+    if [ -n "$batch_info" ]; then
+        write_shared_cache "$batch_info"
+    fi
 
     # No sessions
     if [ -z "$details" ]; then
