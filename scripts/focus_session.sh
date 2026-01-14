@@ -108,8 +108,62 @@ activate_terminal_app() {
     return 1
 }
 
+# Get the terminal app for a specific session's client
+# $1: session_name
+# Returns: Terminal app name or empty if no client attached
+get_terminal_for_session() {
+    local session_name="$1"
+    local terminal_name=""
+
+    if [[ "$(uname)" != "Darwin" ]]; then
+        echo ""
+        return
+    fi
+
+    # Get client PID attached to the session
+    local client_pid
+    client_pid=$(tmux list-clients -t "$session_name" -F '#{client_pid}' 2>/dev/null | head -1)
+
+    if [ -z "$client_pid" ]; then
+        echo ""
+        return
+    fi
+
+    # Walk up the process tree to find terminal app
+    local current_pid="$client_pid"
+    local max_depth=10
+    local depth=0
+
+    while [ "$depth" -lt "$max_depth" ]; do
+        local pname
+        pname=$(ps -p "$current_pid" -o comm= 2>/dev/null)
+
+        terminal_name=$(_detect_terminal_from_pname "$pname")
+        if [ -n "$terminal_name" ]; then
+            break
+        fi
+
+        # Get parent PID
+        local ppid
+        ppid=$(ps -o ppid= -p "$current_pid" 2>/dev/null | tr -d ' ')
+
+        if [ -z "$ppid" ] || [ "$ppid" = "1" ] || [ "$ppid" = "0" ]; then
+            break
+        fi
+
+        current_pid="$ppid"
+        ((depth++))
+    done
+
+    echo "$terminal_name"
+}
+
 # Switch to the specified tmux pane
 # $1: pane_id (e.g., %0, %3)
+# Handles cross-session switching and terminal activation
+# Intelligently manages cross-session switching:
+# - If target session has an attached client, activates that terminal
+# - If target session is detached, switches current client to it
 switch_to_pane() {
     local pane_id="$1"
 
@@ -128,10 +182,29 @@ switch_to_pane() {
         return 1
     fi
 
-    # Switch to the session, window, and select the pane
-    tmux switch-client -t "$session_name" 2>/dev/null || true
-    tmux select-window -t "$session_name:$window_index" 2>/dev/null || true
-    tmux select-pane -t "$pane_id" 2>/dev/null
+    # Check if target session has a client attached
+    local target_client_tty
+    target_client_tty=$(tmux list-clients -t "$session_name" -F '#{client_tty}' 2>/dev/null | head -1)
+
+    if [ -n "$target_client_tty" ]; then
+        # Target session has a client attached in another terminal
+        # Activate that terminal and select window/pane there
+        local target_terminal_name
+        target_terminal_name=$(get_terminal_for_session "$session_name")
+
+        if [ -n "$target_terminal_name" ]; then
+            activate_terminal_app "$target_terminal_name"
+        fi
+
+        # Select window and pane (switch-client not needed - already attached)
+        tmux select-window -t "$session_name:$window_index" 2>/dev/null || true
+        tmux select-pane -t "$pane_id" 2>/dev/null
+    else
+        # Target session is detached, switch current client to it
+        tmux switch-client -t "$session_name" 2>/dev/null || true
+        tmux select-window -t "$session_name:$window_index" 2>/dev/null || true
+        tmux select-pane -t "$pane_id" 2>/dev/null
+    fi
 
     return $?
 }
