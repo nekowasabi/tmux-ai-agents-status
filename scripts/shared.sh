@@ -393,24 +393,35 @@ get_pane_id_for_pid_direct() {
 
 # 複数PIDの全情報を一括取得（FAST_MODE用の超高速版）
 # 戻り値: "pid|pane_id|session_name|window_index|tty_path|terminal|cwd" 形式の行リスト
+# 注意: Detached セッション（クライアント未接続）のプロセスは除外される
 get_all_claude_info_batch() {
     [ "$BATCH_INITIALIZED" != "1" ] && return
 
     # awkで一括処理: 全キャッシュファイルを結合
+    # ファイル順序:
+    #   1: BATCH_PID_PANE_MAP_FILE (pid -> pane_id)
+    #   2: BATCH_PANE_INFO_FILE (pane_id -> session, window, tty, cwd)
+    #   3: BATCH_TERMINAL_CACHE_FILE (session -> terminal)
+    #   4: BATCH_CLIENTS_CACHE_FILE (attached sessions)
+    #   5: BATCH_PROCESS_TREE_FILE (process tree with claude detection)
     awk '
     BEGIN { FS="\t"; fnum=0 }
     FNR==1 { fnum++ }
     fnum==1 { pid_pane[$1]=$2; next }
     fnum==2 { pane_session[$1]=$3; pane_window[$1]=$4; pane_tty[$1]=$6; pane_cwd[$1]=$7; next }
     fnum==3 { session_term[$1]=$2; next }
-    fnum==4 { gsub(/^[ \t]+/,""); split($0,f,/[ \t]+/); if(f[3]=="claude") claude_pids[f[1]]=1 }
+    fnum==4 { attached_sessions[$1]=1; next }
+    fnum==5 { gsub(/^[ \t]+/,""); split($0,f,/[ \t]+/); if(f[3]=="claude") claude_pids[f[1]]=1 }
     END {
         for(pid in claude_pids) {
             p=pid_pane[pid]; if(p=="") continue
-            s=pane_session[p]; c=pane_cwd[p]; if(c=="") c="unknown"
+            s=pane_session[p]
+            # Detached セッションのプロセスを除外
+            if (!(s in attached_sessions)) continue
+            c=pane_cwd[p]; if(c=="") c="unknown"
             print pid"|"p"|"s"|"pane_window[p]"|"pane_tty[p]"|"session_term[s]"|"c
         }
-    }' "$BATCH_PID_PANE_MAP_FILE" "$BATCH_PANE_INFO_FILE" "$BATCH_TERMINAL_CACHE_FILE" "$BATCH_PROCESS_TREE_FILE" 2>/dev/null
+    }' "$BATCH_PID_PANE_MAP_FILE" "$BATCH_PANE_INFO_FILE" "$BATCH_TERMINAL_CACHE_FILE" "$BATCH_CLIENTS_CACHE_FILE" "$BATCH_PROCESS_TREE_FILE" 2>/dev/null
 }
 
 # バッチキャッシュのクリーンアップ
