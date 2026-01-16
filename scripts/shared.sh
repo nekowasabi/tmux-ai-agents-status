@@ -25,7 +25,7 @@ SHARED_CACHE_TTL=5  # キャッシュ有効期間（秒）
 # $1: プロセス情報（get_all_claude_info_batch形式: pid|pane_id|session|window|tty|terminal|cwd）
 # フォーマット:
 #   1行目: タイムスタンプ
-#   2行目: tmuxオプション（TAB区切り: working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown）
+#   2行目: tmuxオプション（TAB区切り: working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_windows terminal_vscode terminal_alacritty terminal_unknown）
 #   3行目: TTY stat情報（"tty_path mtime;tty_path2 mtime2;..."形式）
 #   4行目以降: プロセス情報
 write_shared_cache() {
@@ -33,23 +33,29 @@ write_shared_cache() {
     local timestamp
     timestamp=$(get_current_timestamp)
 
-    # tmuxオプションを一括取得（6回の呼び出しを1回に最適化）
+    # tmuxオプションを一括取得（9回の呼び出しを1回に最適化）
     local tmux_opts
     tmux_opts=$(tmux show-options -g 2>/dev/null | awk '
-        /@claudecode_working_dot/ { wd=$2 }
-        /@claudecode_idle_dot/ { id=$2 }
-        /@claudecode_terminal_iterm/ { ti=$2 }
-        /@claudecode_terminal_wezterm/ { tw=$2 }
-        /@claudecode_terminal_ghostty/ { tg=$2 }
-        /@claudecode_terminal_unknown/ { tu=$2 }
+        /@claudecode_working_dot/ { gsub(/@claudecode_working_dot /,""); wd=$0 }
+        /@claudecode_idle_dot/ { gsub(/@claudecode_idle_dot /,""); id=$0 }
+        /@claudecode_terminal_iterm/ { gsub(/@claudecode_terminal_iterm /,""); ti=$0 }
+        /@claudecode_terminal_wezterm/ { gsub(/@claudecode_terminal_wezterm /,""); tw=$0 }
+        /@claudecode_terminal_ghostty/ { gsub(/@claudecode_terminal_ghostty /,""); tg=$0 }
+        /@claudecode_terminal_windows/ { gsub(/@claudecode_terminal_windows /,""); twin=$0 }
+        /@claudecode_terminal_vscode/ { gsub(/@claudecode_terminal_vscode /,""); tvs=$0 }
+        /@claudecode_terminal_alacritty/ { gsub(/@claudecode_terminal_alacritty /,""); tala=$0 }
+        /@claudecode_terminal_unknown/ { gsub(/@claudecode_terminal_unknown /,""); tu=$0 }
         END {
             if (wd=="") wd="working"
             if (id=="") id="idle"
             if (ti=="") ti="🍎"
             if (tw=="") tw="⚡"
             if (tg=="") tg="👻"
+            if (twin=="") twin="🪟"
+            if (tvs=="") tvs="📝"
+            if (tala=="") tala="🔲"
             if (tu=="") tu="❓"
-            print wd "\t" id "\t" ti "\t" tw "\t" tg "\t" tu
+            print wd "\t" id "\t" ti "\t" tw "\t" tg "\t" twin "\t" tvs "\t" tala "\t" tu
         }
     ')
 
@@ -305,47 +311,68 @@ _prebuild_terminal_cache() {
         return
     fi
 
-    # awkで一括処理: プロセスツリーとクライアント情報を結合してターミナルを検出
-    awk -F'\t' '
-    # 最初のファイル（プロセスツリー）を読み込み
-    FNR == NR {
-        gsub(/^[ \t]+/, "")
-        split($0, fields, /[ \t]+/)
-        pid = fields[1]
-        parent = fields[2]
-        comm = fields[3]
-        if (pid != "PID" && pid != "") {
-            ppid[pid] = parent
-            pcomm[pid] = comm
-        }
-        next
-    }
-    # 2番目のファイル（クライアント情報）を処理
-    {
-        session = $1
-        client_pid = $3
-        if (session == "" || client_pid == "") next
+    # WSL環境判定
+    local is_wsl=0
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        is_wsl=1
+    fi
 
-        # 親プロセスを辿ってターミナルを検出
-        current = client_pid
-        for (depth = 0; depth < 10; depth++) {
-            if (current == "" || current == "1" || current == "0") break
-            comm = pcomm[current]
-            # ターミナル名を検出
-            if (comm ~ /iTerm|Terminal/) {
-                print session "\tiTerm2"
-                break
-            } else if (comm ~ /[Ww]ez[Tt]erm/) {
-                print session "\tWezTerm"
-                break
-            } else if (comm ~ /[Gg]hostty/) {
-                print session "\tGhostty"
-                break
+    if [ "$is_wsl" = "1" ]; then
+        # ===== WSL環境用のロジック =====
+        # クライアント情報から環境変数を読み込んでターミナル判定
+        while IFS=$'\t' read -r session client_tty client_pid; do
+            [ -z "$session" ] || [ -z "$client_pid" ] && continue
+
+            local terminal
+            terminal=$(detect_terminal_from_client_env "$client_pid")
+            if [ -n "$terminal" ] && [ "$terminal" != "Unknown" ]; then
+                printf '%s\t%s\n' "$session" "$terminal"
+            fi
+        done < "$BATCH_CLIENTS_CACHE_FILE" >> "$BATCH_TERMINAL_CACHE_FILE"
+    else
+        # ===== macOS/Linux環境用のロジック（既存） =====
+        # awkで一括処理: プロセスツリーとクライアント情報を結合してターミナルを検出
+        awk -F'\t' '
+        # 最初のファイル（プロセスツリー）を読み込み
+        FNR == NR {
+            gsub(/^[ \t]+/, "")
+            split($0, fields, /[ \t]+/)
+            pid = fields[1]
+            parent = fields[2]
+            comm = fields[3]
+            if (pid != "PID" && pid != "") {
+                ppid[pid] = parent
+                pcomm[pid] = comm
             }
-            current = ppid[current]
+            next
         }
-    }
-    ' "$BATCH_PROCESS_TREE_FILE" "$BATCH_CLIENTS_CACHE_FILE" >> "$BATCH_TERMINAL_CACHE_FILE"
+        # 2番目のファイル（クライアント情報）を処理
+        {
+            session = $1
+            client_pid = $3
+            if (session == "" || client_pid == "") next
+
+            # 親プロセスを辿ってターミナルを検出
+            current = client_pid
+            for (depth = 0; depth < 10; depth++) {
+                if (current == "" || current == "1" || current == "0") break
+                comm = pcomm[current]
+                # ターミナル名を検出
+                if (comm ~ /iTerm|Terminal/) {
+                    print session "\tiTerm2"
+                    break
+                } else if (comm ~ /[Ww]ez[Tt]erm/) {
+                    print session "\tWezTerm"
+                    break
+                } else if (comm ~ /[Gg]hostty/) {
+                    print session "\tGhostty"
+                    break
+                }
+                current = ppid[current]
+            }
+        }
+        ' "$BATCH_PROCESS_TREE_FILE" "$BATCH_CLIENTS_CACHE_FILE" >> "$BATCH_TERMINAL_CACHE_FILE"
+    fi
 }
 
 # PID -> pane_id マッピングを構築（内部関数）
@@ -404,14 +431,17 @@ get_all_claude_info_batch() {
     #   3: BATCH_TERMINAL_CACHE_FILE (session -> terminal)
     #   4: BATCH_CLIENTS_CACHE_FILE (attached sessions)
     #   5: BATCH_PROCESS_TREE_FILE (process tree with claude detection)
-    awk '
-    BEGIN { FS="\t"; fnum=0 }
-    FNR==1 { fnum++ }
-    fnum==1 { pid_pane[$1]=$2; next }
-    fnum==2 { pane_session[$1]=$3; pane_window[$1]=$4; pane_tty[$1]=$6; pane_cwd[$1]=$7; next }
-    fnum==3 { session_term[$1]=$2; next }
-    fnum==4 { attached_sessions[$1]=1; next }
-    fnum==5 { gsub(/^[ \t]+/,""); split($0,f,/[ \t]+/); if(f[3]=="claude") claude_pids[f[1]]=1 }
+    awk -v f1="$BATCH_PID_PANE_MAP_FILE" \
+        -v f2="$BATCH_PANE_INFO_FILE" \
+        -v f3="$BATCH_TERMINAL_CACHE_FILE" \
+        -v f4="$BATCH_CLIENTS_CACHE_FILE" \
+        -v f5="$BATCH_PROCESS_TREE_FILE" '
+    BEGIN { FS="\t" }
+    FILENAME == f1 { pid_pane[$1]=$2; next }
+    FILENAME == f2 { pane_session[$1]=$3; pane_window[$1]=$4; pane_tty[$1]=$6; pane_cwd[$1]=$7; next }
+    FILENAME == f3 { session_term[$1]=$2; next }
+    FILENAME == f4 { attached_sessions[$1]=1; next }
+    FILENAME == f5 { gsub(/^[ \t]+/,""); split($0,f,/[ \t]+/); if(f[3]=="claude") claude_pids[f[1]]=1 }
     END {
         for(pid in claude_pids) {
             p=pid_pane[pid]; if(p=="") continue

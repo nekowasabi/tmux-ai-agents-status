@@ -56,10 +56,10 @@ generate_process_list() {
 
     # ステータスアイコンとターミナル絵文字を取得
     # 優先順位: 1.共有キャッシュ 2.バッチキャッシュファイル 3.tmux直接取得
-    local working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown
+    local working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_windows terminal_vscode terminal_alacritty terminal_unknown
     if [ -n "$SHARED_CACHE_OPTIONS" ]; then
         # 共有キャッシュからオプションを取得（最速）
-        IFS=$'\t' read -r working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_unknown <<< "$SHARED_CACHE_OPTIONS"
+        IFS=$'\t' read -r working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_windows terminal_vscode terminal_alacritty terminal_unknown <<< "$SHARED_CACHE_OPTIONS"
     elif [ -n "$BATCH_TMUX_OPTIONS_FILE" ] && [ -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
         eval "$(awk '
         /@claudecode_working_dot/ {gsub(/@claudecode_working_dot /,""); print "working_dot='\''"$0"'\''"}
@@ -67,6 +67,9 @@ generate_process_list() {
         /@claudecode_terminal_iterm/ {gsub(/@claudecode_terminal_iterm /,""); print "terminal_iterm='\''"$0"'\''"}
         /@claudecode_terminal_wezterm/ {gsub(/@claudecode_terminal_wezterm /,""); print "terminal_wezterm='\''"$0"'\''"}
         /@claudecode_terminal_ghostty/ {gsub(/@claudecode_terminal_ghostty /,""); print "terminal_ghostty='\''"$0"'\''"}
+        /@claudecode_terminal_windows/ {gsub(/@claudecode_terminal_windows /,""); print "terminal_windows='\''"$0"'\''"}
+        /@claudecode_terminal_vscode/ {gsub(/@claudecode_terminal_vscode /,""); print "terminal_vscode='\''"$0"'\''"}
+        /@claudecode_terminal_alacritty/ {gsub(/@claudecode_terminal_alacritty /,""); print "terminal_alacritty='\''"$0"'\''"}
         /@claudecode_terminal_unknown/ {gsub(/@claudecode_terminal_unknown /,""); print "terminal_unknown='\''"$0"'\''"}
         ' "$BATCH_TMUX_OPTIONS_FILE")"
     else
@@ -76,10 +79,13 @@ generate_process_list() {
         terminal_iterm=$(get_tmux_option "@claudecode_terminal_iterm" "🍎")
         terminal_wezterm=$(get_tmux_option "@claudecode_terminal_wezterm" "⚡")
         terminal_ghostty=$(get_tmux_option "@claudecode_terminal_ghostty" "👻")
+        terminal_windows=$(get_tmux_option "@claudecode_terminal_windows" "🪟")
+        terminal_vscode=$(get_tmux_option "@claudecode_terminal_vscode" "📝")
+        terminal_alacritty=$(get_tmux_option "@claudecode_terminal_alacritty" "🔲")
         terminal_unknown=$(get_tmux_option "@claudecode_terminal_unknown" "❓")
     fi
     : "${working_dot:=working}" "${idle_dot:=idle}"
-    : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_unknown:=❓}"
+    : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_windows:=🪟}" "${terminal_vscode:=📝}" "${terminal_alacritty:=🔲}" "${terminal_unknown:=❓}"
 
     # 現在時刻とthreshold（EPOCHSECONDS使用で高速化）
     local current_time="${EPOCHSECONDS:-$(date +%s)}"
@@ -112,6 +118,9 @@ generate_process_list() {
         -v emoji_iterm="$terminal_iterm" \
         -v emoji_wezterm="$terminal_wezterm" \
         -v emoji_ghostty="$terminal_ghostty" \
+        -v emoji_windows="$terminal_windows" \
+        -v emoji_vscode="$terminal_vscode" \
+        -v emoji_alacritty="$terminal_alacritty" \
         -v emoji_unknown="$terminal_unknown" \
         -v current_time="$current_time" \
         -v threshold="$threshold" \
@@ -138,8 +147,14 @@ generate_process_list() {
             emoji = emoji_wezterm; tpri = 2
         } else if (terminal_name == "Ghostty") {
             emoji = emoji_ghostty; tpri = 3
+        } else if (terminal_name == "WindowsTerminal") {
+            emoji = emoji_windows; tpri = 4
+        } else if (terminal_name == "VSCode") {
+            emoji = emoji_vscode; tpri = 5
+        } else if (terminal_name == "Alacritty") {
+            emoji = emoji_alacritty; tpri = 6
         } else {
-            emoji = emoji_unknown; tpri = 5
+            emoji = emoji_unknown; tpri = 99
         }
 
         # Project name
