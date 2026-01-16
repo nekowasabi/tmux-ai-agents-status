@@ -593,6 +593,7 @@ get_session_states() {
 # 戻り値: "terminal_emoji:pane_index:project_name:status|..." 形式
 # statusは "working" または "idle"
 # 同じプロジェクト名でも異なるセッションの場合は番号付きで表示
+# 注意: Detached セッション（クライアント未接続）のプロセスは除外される
 get_session_details() {
     local pids
     pids=$(get_claude_pids)
@@ -601,6 +602,10 @@ get_session_details() {
         echo ""
         return
     fi
+
+    # Attached セッション一覧を取得（Detached 除外用）
+    local attached_sessions
+    attached_sessions=$(tmux list-clients -F '#{client_session}' 2>/dev/null | sort -u)
 
     local details=""
     local seen_pane_ids=""
@@ -618,6 +623,19 @@ get_session_details() {
             pane_id="${pane_info%%:*}"
             # ペインインデックスを取得
             pane_index=$(get_pane_index "$pane_id")
+        fi
+
+        # Detached セッションのプロセスをスキップ
+        if [ -n "$pane_id" ] && [ "$pane_id" != "unknown_$$_$pid" ]; then
+            local session_name
+            session_name=$(tmux display-message -p -t "$pane_id" '#{session_name}' 2>/dev/null)
+            if [ -n "$session_name" ]; then
+                # セッションが attached_sessions に含まれているかチェック
+                if ! echo "$attached_sessions" | grep -qx "$session_name"; then
+                    # Detached セッションのプロセスはスキップ
+                    continue
+                fi
+            fi
         fi
 
         # 同じペインIDの重複を避ける
