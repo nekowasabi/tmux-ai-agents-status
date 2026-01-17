@@ -242,12 +242,37 @@ run_fzf_selection() {
     local fzf_opts
     # Note: --border removed because tmux popup already provides a border
     # --no-clear prevents screen flicker on startup
-    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\\ Claude:\\ ")
+    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\ Claude:\ ")
+
+    # Get preview setting
+    local preview_enabled
+    preview_enabled=$(get_tmux_option_cached "@claudecode_fzf_preview" "on")
+
+    # Build preview option if enabled
+    local preview_opt=""
+    if [ "$preview_enabled" = "on" ]; then
+        local preview_script="$CURRENT_DIR/preview_pane.sh"
+        if [ -x "$preview_script" ]; then
+            # Build CLAUDECODE_PANE_DATA for preview
+            local pane_data=""
+            for i in "${!display_lines[@]}"; do
+                if [ -n "$pane_data" ]; then
+                    pane_data+=$'\n'
+                fi
+                pane_data+="${display_lines[$i]}"$'\t'"${pane_ids[$i]}"
+            done
+            export CLAUDECODE_PANE_DATA="$pane_data"
+            preview_opt="--preview='$preview_script {}' --preview-window=right:50%:wrap"
+        fi
+    fi
 
     # Run fzf
     local selected
     # Use eval to properly handle escaped spaces in fzf options
-    selected=$(echo "$fzf_input" | eval "fzf $fzf_opts")
+    selected=$(echo "$fzf_input" | eval "fzf $fzf_opts $preview_opt")
+
+    # Cleanup
+    unset CLAUDECODE_PANE_DATA
 
     if [ -z "$selected" ]; then
         return 1

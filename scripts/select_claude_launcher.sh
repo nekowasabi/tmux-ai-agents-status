@@ -61,12 +61,30 @@ if [ ! -s "$TEMP_DATA" ]; then
     exit 0
 fi
 
+# Get preview setting
+PREVIEW_ENABLED=$(get_tmux_option "@claudecode_fzf_preview" "on")
+PREVIEW_SCRIPT="$CURRENT_DIR/preview_pane.sh"
+
+# Build CLAUDECODE_PANE_DATA for preview script
+# Format: "display_line\tpane_id\n" for each entry
+PANE_DATA_FILE="${TEMP_DATA}_pane_data"
+paste "$TEMP_DATA" "${TEMP_DATA}_panes" > "$PANE_DATA_FILE"
+
+# Build preview option
+PREVIEW_OPT=""
+if [ "$PREVIEW_ENABLED" = "on" ] && [ -x "$PREVIEW_SCRIPT" ]; then
+    # Escape paths for shell embedding
+    ESCAPED_SCRIPT=$(printf '%q' "$PREVIEW_SCRIPT")
+    ESCAPED_PANE_DATA=$(printf '%q' "$PANE_DATA_FILE")
+    PREVIEW_OPT="--preview='CLAUDECODE_PANE_DATA=\$(cat $ESCAPED_PANE_DATA) $ESCAPED_SCRIPT {}' --preview-window=right:50%:wrap"
+fi
+
 # Step 2: Launch popup with pre-prepared data (instant display!)
 # Popup writes result to file, then parent process handles focus_session.sh
-tmux popup -E -w 60% -h 40% "
-    trap 'rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$RESULT_FILE'; exit 130' INT TERM
+tmux popup -E -w 80% -h 60% "
+    trap 'rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE' '$RESULT_FILE'; exit 130' INT TERM
 
-    selected=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse --prompt='Select Claude: ')
+    selected=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse --prompt='Select Claude: ' $PREVIEW_OPT)
     if [ -n \"\$selected\" ]; then
         line_num=\$(grep -nF \"\$selected\" '$TEMP_DATA' | head -1 | cut -d: -f1)
         if [ -n \"\$line_num\" ]; then
@@ -74,7 +92,7 @@ tmux popup -E -w 60% -h 40% "
             echo \"\$pane_id\" > '$RESULT_FILE'
         fi
     fi
-    rm -f '$TEMP_DATA' '${TEMP_DATA}_panes'
+    rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE'
 "
 
 # Step 3: After popup closes, execute focus_session.sh in original context

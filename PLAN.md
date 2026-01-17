@@ -88,16 +88,16 @@ updated_at: "2026-01-17"
 
 | Process | Status | Progress | Phase | Notes |
 |---------|--------|----------|-------|-------|
-| Process 1 | planning | 0% | Red | preview_pane.sh スクリプト作成 |
-| Process 2 | planning | 0% | Red | select_claude_launcher.sh 修正 |
-| Process 3 | planning | 0% | Red | select_claude.sh の run_fzf_selection 修正 |
-| Process 4 | planning | 0% | Red | claudecode_status.tmux 設定オプション追加 |
-| Process 10 | planning | 0% | Red | 統合テスト追加 |
-| Process 100 | planning | 0% | Red | リファクタリング・品質向上 |
-| Process 200 | planning | 0% | Red | ドキュメンテーション更新 |
-| Process 300 | planning | 0% | Red | OODAフィードバックループ |
+| Process 1 | completed | 100% | Done | preview_pane.sh スクリプト作成 |
+| Process 2 | completed | 100% | Done | select_claude_launcher.sh 修正 |
+| Process 3 | completed | 100% | Done | select_claude.sh の run_fzf_selection 修正 |
+| Process 4 | completed | 100% | Done | claudecode_status.tmux 設定オプション確認 |
+| Process 10 | completed | 100% | Done | 統合テスト追加（11テスト成功） |
+| Process 100 | completed | 100% | Done | リファクタリング・品質向上 |
+| Process 200 | completed | 100% | Done | ドキュメンテーション更新 |
+| Process 300 | completed | 100% | Done | OODAフィードバックループ |
 | | | | | |
-| **Overall** | **planning** | **0%** | **planning** | **Blockers: 0** |
+| **Overall** | **completed** | **100%** | **Done** | **Blockers: 0** |
 
 ---
 
@@ -968,11 +968,11 @@ tags: [ooda, lessons, feedback]
 | 2026-01-17 | マルチLLM合議 | 修正付き採用: ポップアップサイズ拡大、エスケープ処理追加 | closed |
 
 ## Completion Checklist
-- [ ] すべてのProcess完了
-- [ ] すべてのテスト合格
+- [x] すべてのProcess完了
+- [x] すべてのテスト合格（test_detection: 14, test_output: 9, test_preview: 11）
 - [ ] コードレビュー完了
-- [ ] ドキュメント更新完了
-- [ ] マージ可能な状態
+- [x] ドキュメント更新完了
+- [x] マージ可能な状態
 
 ---
 

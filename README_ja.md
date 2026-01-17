@@ -79,6 +79,8 @@ set -g status-format[1] "#{claudecode_status}"
 | `@claudecode_working_threshold` | `30` | working/idle判定の閾値（秒） |
 | `@claudecode_select_key` | `""` (空) | プロセス選択機能を開くキーバインド（例: `C-g`） |
 | `@claudecode_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | プロセス選択機能用のfzfオプション |
+| `@claudecode_fzf_preview` | `on` | fzfプレビューの有効/無効 (`on`/`off`) |
+| `@claudecode_fzf_preview_lines` | `30` | プレビューに表示する行数 |
 
 ### カスタマイズ例
 

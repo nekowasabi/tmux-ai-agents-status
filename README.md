@@ -79,6 +79,8 @@ set -g status-format[1] "#{claudecode_status}"
 | `@claudecode_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
 | `@claudecode_select_key` | `""` (empty) | Keybinding to open process selector (e.g., `C-g`) |
 | `@claudecode_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | fzf options for process selector |
+| `@claudecode_fzf_preview` | `on` | Enable/disable fzf preview pane (`on`/`off`) |
+| `@claudecode_fzf_preview_lines` | `30` | Number of lines to show in preview |
 
 ### Customization Examples
 
