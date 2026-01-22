@@ -1,988 +1,1445 @@
 ---
-mission_id: fzf-preview-feature
-title: "fzfプロセス選択画面にプレビュー機能を追加"
+mission_id: facilitator-feature
+title: タスク完了後の継続フロー機能
 status: planning
 progress: 0
 phase: planning
 tdd_mode: true
-blockers: 0
-created_at: "2026-01-17"
-updated_at: "2026-01-17"
+blockers: []
+created_at: 2026-01-22
+updated_at: 2026-01-22
 ---
+
+# User Operation Flow
+
+## 設計方針
+- **能動的呼び出し方式**: 自動ポップアップは誤操作や集中妨害のリスクがあるため不採用
+- **通知**: 既存のhooks機能（terminal-notifier等）で実現済み
+- **呼び出し**: ユーザーが気づいたときにキーバインドで能動的に
+
+## 通常フロー
+```
+1. Claude Codeでタスク実行
+2. タスク完了 → 既存hooksで通知（terminal-notifier等）
+3. ユーザーが通知に気づく（自分のペースで）
+4. prefix + n を押す（能動的）
+5. ポップアップ表示「次に何をしますか？」
+6. アクション選択・実行
+```
+
+## 各アクションの動作
+| アクション | 動作 |
+|-----------|------|
+| 🔄 続ける | 元のペインにフォーカス → 通常入力 |
+| 🔀 切り替え | select_claude_launcher.sh起動 |
+| ➕ 新規 | 元のペインにフォーカス → 通常入力 |
+| ✅ 完了 | ポップアップを閉じる |
+
+## キーボード操作
+| キー | 動作 |
+|------|------|
+| `prefix + n` | 次のアクションUI呼び出し |
+| `↑` / `↓` | メニュー項目選択 |
+| `Enter` | 選択確定 |
+| `Esc` | キャンセル |
+
+## 既存機能との一貫性
+```bash
+prefix + g  → select_claude_launcher.sh  → Claude選択UI（既存）
+prefix + n  → facilitator_launcher.sh    → 次のアクションUI（新規）
+```
 
 # Commander's Intent
 
-## Purpose
-- `@claudecode_select_key` で起動するfzfプロセス絞り込み画面に、選択中のClaudeセッションのペイン内容をリアルタイムプレビュー表示する
-- ユーザーが複数のClaudeセッションを持つ場合に、切り替え前に内容を確認できるようにする
+## 目的
+Claude Codeのタスク完了後、ユーザーが次のアクションを直感的に選択できるインタラクティブフローを提供する。
 
-## End State
-- fzf選択画面の右側（または下部）にプレビューペインが表示される
-- 選択を移動するたびに、対応するtmuxペインの最新内容（最後の30行）が表示される
-- プレビュー機能はオプションで有効/無効を切り替えられる（`@claudecode_fzf_preview`）
-- パフォーマンスに影響を与えない（遅延が体感できないレベル）
+## 成功基準
+1. tmuxキーバインド（prefix + n）から能動的に起動
+2. 現在のセッション情報を収集・表示
+3. fzf UIで次のアクションを選択可能
+4. プラグイン機構で拡張可能
+5. エラーハンドリングが堅牢
 
-## Key Tasks
-- 新規スクリプト `scripts/preview_pane.sh` を作成
-- `scripts/select_claude_launcher.sh` を修正してプレビューオプションを追加
-- `scripts/select_claude.sh` の `run_fzf_selection` 関数を修正
-- `claudecode_status.tmux` に新しい設定オプションを追加
-- READMEにドキュメントを追加
-- テストを追加
-
-## Constraints
-- 既存の機能を壊さない
-- パフォーマンスを劣化させない（プレビュー無効時は現状維持）
-- tmux 3.2未満でもエラーにならない（プレビューは無効化される）
-
-## Restraints
-- fzfの `--preview` オプションを使用する
-- `tmux capture-pane` コマンドでペイン内容を取得する
-- 既存のコードスタイル・パターンに従う
-
----
+## 非機能要件
+- 起動時間: 1秒以内
+- tmux外では動作しない（サイレントに終了）
+- プラグインの動的読み込み対応
 
 # Context
 
-## 概要
-- fzfプロセス選択画面で、選択中のClaudeセッションのターミナル出力をプレビュー表示する機能を実装
-- ユーザーは複数のClaudeセッションがある場合、切り替える前に各セッションの状態を確認できる
+## 背景
+現在、Claude Codeのタスク完了後、ユーザーは手動で次のアクションを決定する必要がある。本機能により、以下のワークフローを提供する：
 
-## 必須のルール
-- 必ず `CLAUDE.md` を参照し、ルールを守ること
-- 不明な点はAskUserQuestionで確認すること
-- **TDD（テスト駆動開発）を厳守すること**
-  - 各プロセスは必ずテストファーストで開始する（Red → Green → Refactor）
-  - 実装コードを書く前に、失敗するテストを先に作成する
-  - テストが通過するまで修正とテスト実行を繰り返す
-  - プロセス完了の条件：該当するすべてのテスト、フォーマッタ、Linterが通過していること
-  - プロセス完了後、チェックボックスを変更すること
-- **各Process開始時のブリーフィング実行**
-  - 各Processの「Briefing」セクションは自動生成される
-  - `@process-briefing` コメントを含むセクションは、エージェントが実行時に以下を自動取得する：
-    - **Related Lessons**: stigmergy/doctrine-memoriesから関連教訓を取得
-    - **Known Patterns**: プロジェクト固有パターン・テンプレートから自動取得
-    - **Watch Points**: 過去の失敗事例・注意点から自動取得
-  - ブリーフィング情報は `/x` や `/d` コマンド実行時に動的に埋め込まれ、実行戦況を反映する
+1. タスク完了 → 既存hooksで通知（terminal-notifier等）
+2. ユーザーが通知に気づく（自分のペースで）
+3. prefix + n を押す（能動的に呼び出し）
+4. ポップアップで次のアクション選択
+5. 選択されたアクションを実行
 
-## 開発のゴール
-- fzfプロセス選択画面でリアルタイムプレビューが機能する
-- 既存機能との後方互換性を維持する
-- ドキュメントとテストが完備されている
+## 既存システムとの連携
 
----
+### tmuxキーバインド
+- **設定ファイル**: `claudecode_status.tmux`
+- **既存キー**: `prefix + g` (Claude選択)
+- **追加キー**: `prefix + n` (次のアクションUI)
+- **通知**: 既存hooksで実現済み（terminal-notifier等）
+
+### tmux-claudecode-status プラグイン
+- **既存機能**: ステータス表示、セッション追跡、プロセス選択
+- **再利用コンポーネント**:
+  - `select_claude.sh`: プロセス情報取得（`--list`オプション）
+  - `select_claude_launcher.sh`: セレクタUIパターン（参考）
+  - `focus_session.sh`: フォーカス管理
+  - `shared.sh`: 共有ユーティリティ
+
+### tmux通信パターン
+```bash
+# ペインにコマンド送信
+tmux send-keys -t <pane_id> "コマンド" Enter
+
+# ペイン内容取得
+tmux capture-pane -t "$pane_id" -p -S -20
+
+# ポップアップUI
+tmux popup -E -w 80% -h 60% "command"
+
+# ペイン選択
+tmux select-pane -t "$pane_id"
+```
+
+## プロジェクト構造
+```
+tmux-claudecode-status/
+├── claudecode_status.tmux          # TPM入り口
+├── scripts/
+│   ├── claudecode_status.sh         # メイン：ステータス表示
+│   ├── shared.sh                    # 共有ユーティリティ
+│   ├── session_tracker.sh           # セッション追跡
+│   ├── select_claude.sh             # プロセスセレクタ
+│   ├── select_claude_launcher.sh    # セレクタランチャー（参考パターン）
+│   ├── focus_session.sh             # フォーカス管理
+│   ├── preview_pane.sh              # プレビュー表示
+│   └── facilitator/                 # 【新規】
+│       ├── facilitator_launcher.sh  # メインエントリポイント
+│       ├── context-builder.sh       # コンテキスト収集
+│       ├── action-selector.sh       # fzf UI
+│       ├── action-executor.sh       # アクション実行
+│       ├── session-state.sh         # セッション状態管理
+│       └── plugins/                 # プラグイン
+│           └── README.md
+├── config/
+│   └── actions.json                 # 【新規】アクション定義
+└── tests/                           # テストスイート
+```
 
 # References
 
-| @ref | @target | @test |
-|------|---------|-------|
-| scripts/shared.sh | scripts/preview_pane.sh (新規) | tests/test_preview.sh (新規) |
-| scripts/select_claude.sh (行207-264) | scripts/select_claude.sh | tests/test_output.sh |
-| scripts/select_claude_launcher.sh | scripts/select_claude_launcher.sh | tests/test_output.sh |
-| claudecode_status.tmux (行34-70) | claudecode_status.tmux | tests/test_output.sh |
-| README.md | README.md, README_ja.md | - |
+## 参照ファイル
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/select_claude_launcher.sh` - fzf UIパターン
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/focus_session.sh` - フォーカス管理
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/shared.sh` - 共有ユーティリティ
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/select_claude.sh` - プロセス情報取得
+- `/Users/ttakeda/repos/tmux-claudecode-status/claudecode_status.tmux` - キーバインド設定
 
----
+## 実装ファイル（新規作成）
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/facilitator_launcher.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/context-builder.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/action-selector.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/action-executor.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/session-state.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/scripts/facilitator/plugins/README.md`
+- `/Users/ttakeda/repos/tmux-claudecode-status/config/actions.json`
+
+## テストファイル
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_facilitator.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_context_builder.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_action_selector.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_action_executor.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_session_state.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_plugins.sh`
+- `/Users/ttakeda/repos/tmux-claudecode-status/tests/facilitator/test_integration.sh`
 
 # Progress Map
 
-| Process | Status | Progress | Phase | Notes |
-|---------|--------|----------|-------|-------|
-| Process 1 | completed | 100% | Done | preview_pane.sh スクリプト作成 |
-| Process 2 | completed | 100% | Done | select_claude_launcher.sh 修正 |
-| Process 3 | completed | 100% | Done | select_claude.sh の run_fzf_selection 修正 |
-| Process 4 | completed | 100% | Done | claudecode_status.tmux 設定オプション確認 |
-| Process 10 | completed | 100% | Done | 統合テスト追加（11テスト成功） |
-| Process 100 | completed | 100% | Done | リファクタリング・品質向上 |
-| Process 200 | completed | 100% | Done | ドキュメンテーション更新 |
-| Process 300 | completed | 100% | Done | OODAフィードバックループ |
-| | | | | |
-| **Overall** | **completed** | **100%** | **Done** | **Blockers: 0** |
-
----
+```
+[Phase 1: 基盤構築] → Process 1-4
+  ↓
+[Phase 2: コア機能] → Process 5-7
+  ↓
+[Phase 3: 拡張機能] → Process 8-9
+  ↓
+[Phase 4: テスト] → Process 10-19
+  ↓
+[Phase 5: フォローアップ] → Process 50-59
+  ↓
+[Phase 6: 品質向上] → Process 100-109
+  ↓
+[Phase 7: ドキュメント] → Process 200-209
+  ↓
+[Phase 8: OODA] → Process 300
+```
 
 # Processes
 
-## Process 1: preview_pane.sh スクリプト作成
+## Process 1: ディレクトリ構造作成
 
-<!--@process-briefing
-category: implementation
-tags: [bash, tmux, fzf, preview]
--->
+### Red
+- [ ] テスト: `tests/facilitator/test_directory_structure.sh` 作成
+  - ディレクトリ存在確認テスト
+  - パーミッション確認テスト
+  - 想定結果: 全ディレクトリが正しく作成される
 
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
+### Green
+- [ ] `scripts/facilitator/` ディレクトリ作成
+- [ ] `scripts/facilitator/plugins/` ディレクトリ作成
+- [ ] `config/` ディレクトリ作成（既存の場合はスキップ）
+- [ ] `tests/facilitator/` ディレクトリ作成
+- [ ] `.gitkeep` ファイル配置（plugins/）
 
----
-
-### 1.1 設計詳細
-
-**目的**: fzfの `--preview` オプションから呼び出されるスクリプト。pane_idを受け取り、そのペインの内容を出力する。
-
-**ファイルパス**: `scripts/preview_pane.sh`
-
-**入力**:
-- 引数1: 表示行（fzfから渡される選択行）
-- 環境変数 `CLAUDECODE_PANE_DATA`: pane_idとdisplay_lineのマッピング（タブ区切り）
-
-**出力**:
-- 標準出力: tmuxペインの内容（最後の30行）
-
-**依存関係**:
-- `tmux capture-pane` コマンド
-- 引数から pane_id を抽出するロジック
-
-**フォーマット（表示行からpane_id抽出）**:
-```
-表示行例: "  🍎 #0 project-name [session-name] working"
-対応pane_id: "%123" など
-```
-
-**実装コード**:
-```bash
-#!/usr/bin/env bash
-# preview_pane.sh - Display pane content for fzf preview
-# Called by fzf --preview option
-
-set -euo pipefail
-
-# 引数: fzfから渡される選択行
-SELECTED_LINE="${1:-}"
-
-if [ -z "$SELECTED_LINE" ]; then
-    echo "No selection"
-    exit 0
-fi
-
-# CLAUDECODE_PANE_DATA 環境変数からpane_idを検索
-# フォーマット: "display_line\tpane_id\n" の繰り返し
-if [ -z "${CLAUDECODE_PANE_DATA:-}" ]; then
-    echo "Preview data not available"
-    exit 0
-fi
-
-# 選択行に対応するpane_idを検索
-PANE_ID=""
-while IFS=$'\t' read -r display_line pane_id; do
-    if [ "$display_line" = "$SELECTED_LINE" ]; then
-        PANE_ID="$pane_id"
-        break
-    fi
-done <<< "$CLAUDECODE_PANE_DATA"
-
-if [ -z "$PANE_ID" ]; then
-    echo "Pane not found for selection"
-    exit 0
-fi
-
-# tmux capture-pane でペイン内容を取得
-# -p: 出力を標準出力に
-# -t: ターゲットペイン指定
-# -S: 開始行（負の値で末尾から）
-if ! tmux capture-pane -p -t "$PANE_ID" -S -30 2>/dev/null; then
-    echo "Failed to capture pane content"
-    echo "Pane ID: $PANE_ID"
-fi
-```
+### Refactor
+- [ ] ディレクトリ構造をREADME.mdに記載
+- [ ] パーミッション最適化（755）
 
 ---
 
-### Red Phase: テスト作成と失敗確認
-- [ ] ブリーフィング
-- [ ] テストファイル `tests/test_preview.sh` を作成
-  - テスト1: スクリプトが実行可能であること
-  - テスト2: 引数なしで "No selection" を出力すること
-  - テスト3: CLAUDECODE_PANE_DATA未設定時に適切なメッセージを出力すること
-  - テスト4: 不正な選択行で "Pane not found" を出力すること
-- [ ] テストを実行して失敗することを確認
+## Process 2: facilitator_launcher.sh 基本実装
+
+### Red
+- [ ] テスト: `tests/facilitator/test_facilitator_launcher.sh` 作成
+  - tmux環境外では即座に終了
+  - tmux環境内では後続処理を呼び出す
+  - 環境変数 `FACILITATOR_MODE` をサポート
+  - タイムアウト処理（デフォルト30秒）
+  - 想定結果: 環境に応じて適切に分岐
+
+### Green
+- [ ] `scripts/facilitator/facilitator_launcher.sh` 作成
   ```bash
-  bash tests/test_preview.sh
+  #!/usr/bin/env bash
+  # facilitator_launcher.sh - メインエントリポイント
+
+  set -euo pipefail
+
+  # 定数
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly FACILITATOR_TIMEOUT="${FACILITATOR_TIMEOUT:-30}"
+  readonly FACILITATOR_MODE="${FACILITATOR_MODE:-interactive}"
+
+  # tmux環境チェック
+  is_tmux_session() {
+      [[ -n "${TMUX:-}" ]]
+  }
+
+  # メイン処理
+  main() {
+      # tmux外では何もしない
+      if ! is_tmux_session; then
+          exit 0
+      fi
+
+      # サイレントモードでは何もしない
+      if [[ "$FACILITATOR_MODE" == "silent" ]]; then
+          exit 0
+      fi
+
+      # 現在のペインID取得
+      local pane_id
+      pane_id=$(tmux display-message -p '#{pane_id}')
+
+      # コンテキスト収集
+      local context_json
+      context_json=$("$SCRIPT_DIR/context-builder.sh" "$pane_id")
+
+      # アクション選択
+      local action_id
+      action_id=$(echo "$context_json" | "$SCRIPT_DIR/action-selector.sh")
+
+      # アクション実行
+      if [[ -n "$action_id" ]]; then
+          "$SCRIPT_DIR/action-executor.sh" "$action_id" "$pane_id" "$context_json"
+      fi
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
+  ```
+- [ ] 実行権限付与（`chmod +x`）
+
+### Refactor
+- [ ] エラーハンドリング強化
+- [ ] ロギング機構追加（デバッグモード）
+- [ ] シェルチェック（shellcheck）実行
+
+---
+
+## Process 3: action-selector.sh 実装
+
+### Red
+- [ ] テスト: `tests/facilitator/test_action_selector.sh` 作成
+  - 固定メニュー表示テスト（4項目）
+  - fzf選択結果の正しい出力
+  - キャンセル時は空文字列を返す
+  - tmux popup表示確認
+  - 想定結果: action_id が正しく出力される
+
+### Green
+- [ ] `scripts/facilitator/action-selector.sh` 作成
+  ```bash
+  #!/usr/bin/env bash
+  # action-selector.sh - fzf UIでアクション選択
+
+  set -euo pipefail
+
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly TEMP_DIR="${TMPDIR:-/tmp}/facilitator.$$"
+
+  # 一時ファイル準備
+  mkdir -p "$TEMP_DIR"
+  trap 'rm -rf "$TEMP_DIR"' EXIT
+
+  readonly MENU_FILE="$TEMP_DIR/menu.txt"
+  readonly RESULT_FILE="$TEMP_DIR/result.txt"
+
+  # 固定メニュー作成
+  create_menu() {
+      cat > "$MENU_FILE" <<EOF
+  🔄 continue    | このプロジェクトで続ける
+  🔀 switch-session | 別のClaudeに切り替え
+  ➕ new-task   | 新規タスクを開始
+  ✅ end        | 完了
+  EOF
+  }
+
+  # fzf UI表示
+  show_selector() {
+      tmux popup -E -w 60% -h 40% "
+          selected=\$(cat '$MENU_FILE' | fzf \
+              --height=100% \
+              --reverse \
+              --border \
+              --prompt='次のアクションを選択: ' \
+              --header='Claude Code タスク完了' \
+              --delimiter=' ' \
+              --with-nth=1,2 \
+              --preview='echo {3..}' \
+              --preview-window=down:3:wrap)
+
+          if [[ -n \"\$selected\" ]]; then
+              echo \"\$selected\" | awk '{print \$2}' > '$RESULT_FILE'
+          fi
+      "
+  }
+
+  # メイン処理
+  main() {
+      create_menu
+      show_selector
+
+      if [[ -f "$RESULT_FILE" ]]; then
+          cat "$RESULT_FILE"
+      fi
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
+  ```
+- [ ] 実行権限付与
+
+### Refactor
+- [ ] fzfオプション最適化（カラースキーム）
+- [ ] キーバインド追加（Ctrl-c: キャンセル）
+- [ ] エラーハンドリング（fzf未インストール時）
+
+---
+
+## Process 4: action-executor.sh 実装
+
+### Red
+- [ ] テスト: `tests/facilitator/test_action_executor.sh` 作成
+  - `continue`: ペインフォーカス実行確認
+  - `switch-session`: select_claude_launcher.sh 呼び出し確認
+  - `new-task`: ペインフォーカス実行確認
+  - `end`: 正常終了確認
+  - 未知のaction_id: エラーハンドリング確認
+  - 想定結果: 各アクションが正しく実行される
+
+### Green
+- [ ] `scripts/facilitator/action-executor.sh` 作成
+  ```bash
+  #!/usr/bin/env bash
+  # action-executor.sh - アクション実行
+
+  set -euo pipefail
+
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly PARENT_SCRIPT_DIR="$(dirname "$SCRIPT_DIR")"
+
+  # ビルトインハンドラ
+  action_continue() {
+      local pane_id="$1"
+      tmux select-pane -t "$pane_id"
+  }
+
+  action_switch_session() {
+      "$PARENT_SCRIPT_DIR/select_claude_launcher.sh"
+  }
+
+  action_new_task() {
+      local pane_id="$1"
+      tmux select-pane -t "$pane_id"
+      # 将来: プロンプトテンプレート表示など
+  }
+
+  action_end() {
+      exit 0
+  }
+
+  # メイン処理
+  main() {
+      local action_id="$1"
+      local pane_id="${2:-}"
+      local context_json="${3:-}"
+
+      case "$action_id" in
+          continue)
+              action_continue "$pane_id"
+              ;;
+          switch-session)
+              action_switch_session
+              ;;
+          new-task)
+              action_new_task "$pane_id"
+              ;;
+          end)
+              action_end
+              ;;
+          *)
+              echo "Unknown action: $action_id" >&2
+              exit 1
+              ;;
+      esac
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
+  ```
+- [ ] 実行権限付与
+
+### Refactor
+- [ ] エラーハンドリング強化
+- [ ] ロギング追加
+- [ ] ドライランモード追加（`--dry-run`）
+
+---
+
+## Process 5: context-builder.sh 実装
+
+### Red
+- [ ] テスト: `tests/facilitator/test_context_builder.sh` 作成
+  - 現在のセッション情報取得
+  - 他のClaudeセッション情報取得
+  - Git状態取得（clean/dirty）
+  - JSON形式出力確認
+  - 想定結果: 有効なJSONが出力される
+
+### Green
+- [ ] `scripts/facilitator/context-builder.sh` 作成
+  ```bash
+  #!/usr/bin/env bash
+  # context-builder.sh - コンテキスト収集
+
+  set -euo pipefail
+
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly PARENT_SCRIPT_DIR="$(dirname "$SCRIPT_DIR")"
+
+  # 現在のセッション情報取得
+  get_current_session() {
+      local pane_id="$1"
+      local session_name project_path cwd
+
+      session_name=$(tmux display-message -p -t "$pane_id" '#{session_name}')
+      cwd=$(tmux display-message -p -t "$pane_id" '#{pane_current_path}')
+      project_path=$(basename "$cwd")
+
+      cat <<EOF
+  {
+    "pane_id": "$pane_id",
+    "session_name": "$session_name",
+    "project": "$project_path",
+    "cwd": "$cwd"
+  }
+  EOF
+  }
+
+  # 他のClaudeセッション情報取得
+  get_other_sessions() {
+      if [[ -x "$PARENT_SCRIPT_DIR/select_claude.sh" ]]; then
+          "$PARENT_SCRIPT_DIR/select_claude.sh" --list 2>/dev/null || echo "[]"
+      else
+          echo "[]"
+      fi
+  }
+
+  # Git状態取得
+  get_git_status() {
+      local cwd="$1"
+
+      if [[ -d "$cwd/.git" ]]; then
+          cd "$cwd" || return
+          if git diff-index --quiet HEAD -- 2>/dev/null; then
+              echo "clean"
+          else
+              echo "dirty"
+          fi
+      else
+          echo "not_a_repo"
+      fi
+  }
+
+  # メイン処理
+  main() {
+      local pane_id="$1"
+      local current_session other_sessions git_status
+
+      current_session=$(get_current_session "$pane_id")
+      other_sessions=$(get_other_sessions)
+
+      local cwd
+      cwd=$(echo "$current_session" | grep -o '"cwd": "[^"]*"' | cut -d'"' -f4)
+      git_status=$(get_git_status "$cwd")
+
+      cat <<EOF
+  {
+    "current_session": $current_session,
+    "other_sessions": $other_sessions,
+    "git_status": "$git_status"
+  }
+  EOF
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
+  ```
+- [ ] 実行権限付与
+
+### Refactor
+- [ ] JSON出力をjqで検証（オプショナル）
+- [ ] エラーハンドリング強化
+- [ ] パフォーマンス最適化（並列実行）
+
+---
+
+## Process 6: actions.json 動的読み込み
+
+### Red
+- [ ] テスト: `tests/facilitator/test_actions_json.sh` 作成
+  - JSONファイル読み込み確認
+  - アクションリスト生成確認
+  - 不正なJSONでエラー
+  - 想定結果: 動的メニュー生成成功
+
+### Green
+- [ ] `config/actions.json` 作成
+  ```json
+  {
+    "version": "1.0",
+    "actions": [
+      {
+        "id": "continue",
+        "label": "このプロジェクトで続ける",
+        "icon": "🔄",
+        "type": "builtin"
+      },
+      {
+        "id": "switch-session",
+        "label": "別のClaudeに切り替え",
+        "icon": "🔀",
+        "type": "builtin"
+      },
+      {
+        "id": "new-task",
+        "label": "新規タスクを開始",
+        "icon": "➕",
+        "type": "builtin"
+      },
+      {
+        "id": "end",
+        "label": "完了",
+        "icon": "✅",
+        "type": "builtin"
+      }
+    ],
+    "plugins": {
+      "enabled": true,
+      "directory": "plugins"
+    }
+  }
+  ```
+- [ ] `action-selector.sh` を更新
+  - actions.jsonからメニュー生成
+  - jq使用（フォールバック: awkで解析）
+
+### Refactor
+- [ ] JSON schema検証
+- [ ] デフォルト値のフォールバック処理
+- [ ] 設定ファイルパスをカスタマイズ可能に
+
+---
+
+## Process 7: プラグイン機構
+
+### Red
+- [ ] テスト: `tests/facilitator/test_plugins.sh` 作成
+  - プラグインメタデータ抽出
+  - プラグイン動的読み込み
+  - プラグイン実行確認
+  - エラーハンドリング（不正なプラグイン）
+  - 想定結果: プラグインがメニューに追加され実行可能
+
+### Green
+- [ ] `scripts/facilitator/plugins/README.md` 作成
+  ```markdown
+  # Facilitator Plugins
+
+  ## プラグイン仕様
+
+  プラグインは以下のメタデータを含むシェルスクリプトです：
+
+  ```bash
+  #!/usr/bin/env bash
+  # @plugin-id: example
+  # @plugin-label: サンプル
+  # @plugin-icon: 🧪
+  # @plugin-description: サンプルプラグイン
+
+  main() {
+      local pane_id="$1"
+      local context_json="$2"
+
+      # プラグイン処理
+      echo "Example plugin executed"
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
   ```
 
-**テストコード** (`tests/test_preview.sh`):
-```bash
-#!/usr/bin/env bash
-# test_preview.sh - Tests for preview_pane.sh
+  ## 引数
+  - `$1`: 現在のペインID
+  - `$2`: コンテキストJSON
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Test counters
-TESTS_RUN=0
-TESTS_PASSED=0
-TESTS_FAILED=0
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-assert_equals() {
-    local expected="$1"
-    local actual="$2"
-    local message="${3:-}"
-    ((TESTS_RUN++))
-    if [ "$expected" = "$actual" ]; then
-        echo -e "${GREEN}PASS${NC}: $message"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}FAIL${NC}: $message"
-        echo "  Expected: '$expected'"
-        echo "  Actual:   '$actual'"
-        ((TESTS_FAILED++))
-    fi
-}
-
-assert_contains() {
-    local substring="$1"
-    local actual="$2"
-    local message="${3:-}"
-    ((TESTS_RUN++))
-    if [[ "$actual" == *"$substring"* ]]; then
-        echo -e "${GREEN}PASS${NC}: $message"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}FAIL${NC}: $message"
-        echo "  Expected to contain: '$substring'"
-        echo "  Actual: '$actual'"
-        ((TESTS_FAILED++))
-    fi
-}
-
-# Test: Script is executable
-test_preview_script_executable() {
-    local script="$PROJECT_ROOT/scripts/preview_pane.sh"
-    if [ -x "$script" ]; then
-        ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: preview_pane.sh is executable"
-        ((TESTS_PASSED++))
-    else
-        ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: preview_pane.sh is not executable"
-        ((TESTS_FAILED++))
-    fi
-}
-
-# Test: No argument returns "No selection"
-test_no_argument() {
-    local output
-    output=$("$PROJECT_ROOT/scripts/preview_pane.sh" 2>&1 || true)
-    assert_contains "No selection" "$output" "No argument returns 'No selection'"
-}
-
-# Test: No CLAUDECODE_PANE_DATA returns appropriate message
-test_no_pane_data() {
-    local output
-    unset CLAUDECODE_PANE_DATA
-    output=$("$PROJECT_ROOT/scripts/preview_pane.sh" "test line" 2>&1 || true)
-    assert_contains "Preview data not available" "$output" "No CLAUDECODE_PANE_DATA returns appropriate message"
-}
-
-# Test: Invalid selection returns "Pane not found"
-test_invalid_selection() {
-    local output
-    export CLAUDECODE_PANE_DATA=$'valid line\t%123'
-    output=$("$PROJECT_ROOT/scripts/preview_pane.sh" "invalid line" 2>&1 || true)
-    assert_contains "Pane not found" "$output" "Invalid selection returns 'Pane not found'"
-    unset CLAUDECODE_PANE_DATA
-}
-
-main() {
-    echo "Running preview_pane.sh tests..."
-    echo "================================"
-
-    test_preview_script_executable
-    test_no_argument
-    test_no_pane_data
-    test_invalid_selection
-
-    echo "================================"
-    echo "Tests: $TESTS_RUN, Passed: $TESTS_PASSED, Failed: $TESTS_FAILED"
-
-    if [ "$TESTS_FAILED" -gt 0 ]; then
-        exit 1
-    fi
-}
-
-main "$@"
-```
-
-**Phase Complete**
-
-### Green Phase: 最小実装と成功確認
-- [ ] ブリーフィング
-- [ ] `scripts/preview_pane.sh` を作成
-  - 上記の実装コードを記述
-  - 実行権限を付与: `chmod +x scripts/preview_pane.sh`
-- [ ] テストを実行して成功することを確認
-  ```bash
-  bash tests/test_preview.sh
+  ## 配置場所
+  `scripts/facilitator/plugins/*.sh`
   ```
+- [ ] サンプルプラグイン作成: `scripts/facilitator/plugins/example.sh`
+- [ ] `action-selector.sh` を更新
+  - プラグインディレクトリスキャン
+  - メタデータ抽出（grep）
+  - メニューに動的追加
+- [ ] `action-executor.sh` を更新
+  - プラグイン実行ハンドラ追加
 
-**Phase Complete**
+### Refactor
+- [ ] プラグインバリデーション
+- [ ] プラグインエラー時のフォールバック
+- [ ] プラグイン設定ファイル（有効/無効切り替え）
 
-### Refactor Phase: 品質改善と継続成功確認
-- [ ] ブリーフィング
-- [ ] ShellCheckでLint確認
+---
+
+## Process 8: session-state.sh 実装
+
+### Red
+- [ ] テスト: `tests/facilitator/test_session_state.sh` 作成
+  - 状態保存確認
+  - 状態読み込み確認
+  - 状態一覧取得確認
+  - 古い状態のクリーンアップ確認
+  - 想定結果: 状態が正しく永続化される
+
+### Green
+- [ ] `scripts/facilitator/session-state.sh` 作成
   ```bash
-  shellcheck scripts/preview_pane.sh
+  #!/usr/bin/env bash
+  # session-state.sh - セッション状態管理
+
+  set -euo pipefail
+
+  readonly STATE_DIR="$HOME/.claude/facilitator-states"
+
+  # ディレクトリ初期化
+  init_state_dir() {
+      mkdir -p "$STATE_DIR"
+  }
+
+  # 状態保存
+  session_state_save() {
+      local session_id="$1"
+      local json_content="$2"
+
+      init_state_dir
+      echo "$json_content" > "$STATE_DIR/${session_id}.json"
+  }
+
+  # 状態読み込み
+  session_state_load() {
+      local session_id="$1"
+
+      if [[ -f "$STATE_DIR/${session_id}.json" ]]; then
+          cat "$STATE_DIR/${session_id}.json"
+      else
+          echo "{}"
+      fi
+  }
+
+  # 状態一覧
+  session_state_list() {
+      init_state_dir
+      find "$STATE_DIR" -name "*.json" -type f
+  }
+
+  # 古い状態のクリーンアップ
+  session_state_cleanup() {
+      local days="${1:-7}"
+
+      init_state_dir
+      find "$STATE_DIR" -name "*.json" -type f -mtime "+${days}" -delete
+  }
+
+  # メイン処理
+  main() {
+      local command="$1"
+      shift
+
+      case "$command" in
+          save)
+              session_state_save "$@"
+              ;;
+          load)
+              session_state_load "$@"
+              ;;
+          list)
+              session_state_list
+              ;;
+          cleanup)
+              session_state_cleanup "$@"
+              ;;
+          *)
+              echo "Usage: $0 {save|load|list|cleanup}" >&2
+              exit 1
+              ;;
+      esac
+  }
+
+  [[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
   ```
-- [ ] エラーハンドリングの強化（必要に応じて）
-- [ ] テストを実行し、継続して成功することを確認
+- [ ] 実行権限付与
 
-**Phase Complete**
-
----
-
-## Process 2: select_claude_launcher.sh 修正
-
-<!--@process-briefing
-category: implementation
-tags: [bash, tmux, fzf, launcher]
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
+### Refactor
+- [ ] 自動クリーンアップ（facilitator.sh起動時）
+- [ ] 状態ファイルの暗号化（オプショナル）
+- [ ] エクスポート/インポート機能
 
 ---
 
-### 2.1 設計詳細
-
-**目的**: ポップアップ起動時にプレビュー機能を有効にする。pane_idのマッピングデータを環境変数として渡す。
-
-**変更ファイル**: `scripts/select_claude_launcher.sh`
-
-**変更概要**:
-1. プレビュースクリプトのパスを変数として定義
-2. CLAUDECODE_PANE_DATA 環境変数を構築してエクスポート
-3. fzf呼び出しに `--preview` オプションを追加
-4. `@claudecode_fzf_preview` オプションの読み取り
-
-**現在のコード（行66-78）**:
-```bash
-# Step 2: Launch popup with pre-prepared data (instant display!)
-# Popup writes result to file, then parent process handles focus_session.sh
-tmux popup -E -w 60% -h 40% "
-    trap 'rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$RESULT_FILE'; exit 130' INT TERM
-
-    selected=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse --prompt='Select Claude: ')
-    if [ -n \"\$selected\" ]; then
-        line_num=\$(grep -nF \"\$selected\" '$TEMP_DATA' | head -1 | cut -d: -f1)
-        if [ -n \"\$line_num\" ]; then
-            pane_id=\$(sed -n \"\${line_num}p\" '${TEMP_DATA}_panes')
-            echo \"\$pane_id\" > '$RESULT_FILE'
-        fi
-    fi
-    rm -f '$TEMP_DATA' '${TEMP_DATA}_panes'
-"
-```
-
-**修正後のコード（行64-95）**:
-```bash
-# Get preview setting
-PREVIEW_ENABLED=$(get_tmux_option "@claudecode_fzf_preview" "on")
-PREVIEW_SCRIPT="$CURRENT_DIR/preview_pane.sh"
-PREVIEW_LINES=$(get_tmux_option "@claudecode_fzf_preview_lines" "30")
-
-# Build CLAUDECODE_PANE_DATA for preview script
-# Format: "display_line\tpane_id\n" for each entry
-PANE_DATA_FILE="${TEMP_DATA}_pane_data"
-paste "$TEMP_DATA" "${TEMP_DATA}_panes" > "$PANE_DATA_FILE"
-
-# Build preview option
-PREVIEW_OPT=""
-if [ "$PREVIEW_ENABLED" = "on" ] && [ -x "$PREVIEW_SCRIPT" ]; then
-    # Escape paths for shell embedding
-    ESCAPED_SCRIPT=$(printf '%q' "$PREVIEW_SCRIPT")
-    ESCAPED_PANE_DATA=$(printf '%q' "$PANE_DATA_FILE")
-    PREVIEW_OPT="--preview='CLAUDECODE_PANE_DATA=\$(cat $ESCAPED_PANE_DATA) $ESCAPED_SCRIPT {}' --preview-window=right:50%:wrap"
-fi
-
-# Step 2: Launch popup with pre-prepared data (instant display!)
-# Popup writes result to file, then parent process handles focus_session.sh
-tmux popup -E -w 80% -h 60% "
-    trap 'rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE' '$RESULT_FILE'; exit 130' INT TERM
-
-    selected=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse --prompt='Select Claude: ' $PREVIEW_OPT)
-    if [ -n \"\$selected\" ]; then
-        line_num=\$(grep -nF \"\$selected\" '$TEMP_DATA' | head -1 | cut -d: -f1)
-        if [ -n \"\$line_num\" ]; then
-            pane_id=\$(sed -n \"\${line_num}p\" '${TEMP_DATA}_panes')
-            echo \"\$pane_id\" > '$RESULT_FILE'
-        fi
-    fi
-    rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE'
-"
-```
-
-**変更点サマリー**:
-| 行番号 | 変更内容 |
-|--------|---------|
-| 64-66 | 新規: `PREVIEW_ENABLED`, `PREVIEW_SCRIPT`, `PREVIEW_LINES` 変数追加 |
-| 68-70 | 新規: `PANE_DATA_FILE` 作成（paste コマンド） |
-| 72-78 | 新規: `PREVIEW_OPT` 構築ロジック |
-| 81 | 変更: ポップアップサイズを `80% x 60%` に拡大 |
-| 82 | 変更: trap に `$PANE_DATA_FILE` の削除を追加 |
-| 84 | 変更: fzf呼び出しに `$PREVIEW_OPT` を追加 |
-| 92 | 変更: rm に `$PANE_DATA_FILE` を追加 |
-
----
-
-### Red Phase: テスト作成と失敗確認
-- [ ] ブリーフィング
-- [ ] `tests/test_preview.sh` にテストケースを追加
-  - テスト: `@claudecode_fzf_preview` オプションが読み取れること
-  - テスト: PANE_DATA_FILE が正しいフォーマットで作成されること
-- [ ] テストを実行して失敗することを確認
-
-**追加テストコード**:
-```bash
-# Test: PANE_DATA_FILE format is correct (tab-separated)
-test_pane_data_format() {
-    local temp_display=$(mktemp)
-    local temp_panes=$(mktemp)
-    local temp_combined=$(mktemp)
-
-    echo "  🍎 #0 project [session] working" > "$temp_display"
-    echo "%123" > "$temp_panes"
-
-    paste "$temp_display" "$temp_panes" > "$temp_combined"
-
-    local expected=$'  🍎 #0 project [session] working\t%123'
-    local actual=$(cat "$temp_combined")
-
-    assert_equals "$expected" "$actual" "PANE_DATA_FILE format is correct"
-
-    rm -f "$temp_display" "$temp_panes" "$temp_combined"
-}
-```
-
-**Phase Complete**
-
-### Green Phase: 最小実装と成功確認
-- [ ] ブリーフィング
-- [ ] `scripts/select_claude_launcher.sh` を修正
-  - 行64-66: `PREVIEW_ENABLED`, `PREVIEW_SCRIPT`, `PREVIEW_LINES` 変数を追加
-  - 行68-70: `PANE_DATA_FILE` 作成ロジックを追加
-  - 行72-78: `PREVIEW_OPT` 構築ロジックを追加
-  - 行81: ポップアップサイズを変更（プレビュー用に拡大）
-  - 行82, 84, 92: ファイル参照を更新
-- [ ] テストを実行して成功することを確認
-
-**Phase Complete**
-
-### Refactor Phase: 品質改善と継続成功確認
-- [ ] ブリーフィング
-- [ ] ShellCheckでLint確認
-- [ ] テストを実行し、継続して成功することを確認
-
-**Phase Complete**
-
----
-
-## Process 3: select_claude.sh の run_fzf_selection 修正
-
-<!--@process-briefing
-category: implementation
-tags: [bash, fzf, selection]
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
-
----
-
-### 3.1 設計詳細
-
-**目的**: 非ポップアップモード（`split-window`）でもプレビュー機能を使えるようにする。
-
-**変更ファイル**: `scripts/select_claude.sh`
-
-**変更関数**: `run_fzf_selection()` (行207-264)
-
-**現在のコード（行240-250）**:
-```bash
-    # Get fzf options from tmux（キャッシュ版を使用）
-    local fzf_opts
-    # Note: --border removed because tmux popup already provides a border
-    # --no-clear prevents screen flicker on startup
-    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\ Claude:\ ")
-
-    # Run fzf
-    local selected
-    # Use eval to properly handle escaped spaces in fzf options
-    selected=$(echo "$fzf_input" | eval "fzf $fzf_opts")
-```
-
-**修正後のコード（行240-270）**:
-```bash
-    # Get fzf options from tmux（キャッシュ版を使用）
-    local fzf_opts
-    # Note: --border removed because tmux popup already provides a border
-    # --no-clear prevents screen flicker on startup
-    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\ Claude:\ ")
-
-    # Get preview setting
-    local preview_enabled
-    preview_enabled=$(get_tmux_option_cached "@claudecode_fzf_preview" "on")
-
-    # Build preview option if enabled
-    local preview_opt=""
-    if [ "$preview_enabled" = "on" ]; then
-        local preview_script="$CURRENT_DIR/preview_pane.sh"
-        if [ -x "$preview_script" ]; then
-            # Build CLAUDECODE_PANE_DATA for preview
-            local pane_data=""
-            for i in "${!display_lines[@]}"; do
-                if [ -n "$pane_data" ]; then
-                    pane_data+=$'\n'
-                fi
-                pane_data+="${display_lines[$i]}"$'\t'"${pane_ids[$i]}"
-            done
-            export CLAUDECODE_PANE_DATA="$pane_data"
-            preview_opt="--preview='$preview_script {}' --preview-window=right:50%:wrap"
-        fi
-    fi
-
-    # Run fzf
-    local selected
-    # Use eval to properly handle escaped spaces in fzf options
-    selected=$(echo "$fzf_input" | eval "fzf $fzf_opts $preview_opt")
-```
-
-**変更点サマリー**:
-| 行番号 | 変更内容 |
-|--------|---------|
-| 246-248 | 新規: `preview_enabled` 取得 |
-| 250-264 | 新規: `preview_opt` 構築ロジック |
-| 267 | 変更: fzf呼び出しに `$preview_opt` を追加 |
-
----
-
-### Red Phase: テスト作成と失敗確認
-- [ ] ブリーフィング
-- [ ] `tests/test_preview.sh` にテストケースを追加
-  - テスト: `run_fzf_selection` 関数が存在すること
-  - テスト: プレビューオプション構築ロジックが動作すること
-- [ ] テストを実行して失敗することを確認
-
-**Phase Complete**
-
-### Green Phase: 最小実装と成功確認
-- [ ] ブリーフィング
-- [ ] `scripts/select_claude.sh` の `run_fzf_selection` 関数を修正
-  - 行246-248: `preview_enabled` 取得を追加
-  - 行250-264: `preview_opt` 構築ロジックを追加
-  - 行267: fzf呼び出しを修正
-- [ ] テストを実行して成功することを確認
-
-**Phase Complete**
-
-### Refactor Phase: 品質改善と継続成功確認
-- [ ] ブリーフィング
-- [ ] ShellCheckでLint確認
-- [ ] `CLAUDECODE_PANE_DATA` のクリーンアップ処理を追加（必要に応じて）
-- [ ] テストを実行し、継続して成功することを確認
-
-**Phase Complete**
-
----
-
-## Process 4: claudecode_status.tmux 設定オプション追加
-
-<!--@process-briefing
-category: implementation
-tags: [tmux, configuration]
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
-
----
-
-### 4.1 設計詳細
-
-**目的**: 新しい設定オプション `@claudecode_fzf_preview` をtmuxプラグインに追加する。
-
-**変更ファイル**: `claudecode_status.tmux`
-
-**追加オプション**:
-| オプション名 | デフォルト値 | 説明 |
-|-------------|-------------|------|
-| `@claudecode_fzf_preview` | `on` | fzfプレビュー機能の有効/無効 (`on`/`off`) |
-| `@claudecode_fzf_preview_lines` | `30` | プレビューで表示する行数 |
-
-**変更なし**: このオプションはtmux show-optionで読み取るだけなので、`claudecode_status.tmux` 自体に変更は不要。ただし、ドキュメント（README）に記載する必要がある。
-
-**確認事項**:
-- `shared.sh` の `get_tmux_option` 関数が正しく動作すること
-- デフォルト値が適切に設定されること
-
----
-
-### Red Phase: テスト作成と失敗確認
-- [ ] ブリーフィング
-- [ ] `tests/test_preview.sh` にテストケースを追加
-  - テスト: `@claudecode_fzf_preview` オプションが読み取れること（デフォルト値）
-- [ ] テストを実行して失敗することを確認
-
-**テストコード**:
-```bash
-# Test: Default preview option value
-test_default_preview_option() {
-    source "$PROJECT_ROOT/scripts/shared.sh"
-    local value
-    value=$(get_tmux_option "@claudecode_fzf_preview" "on")
-    assert_equals "on" "$value" "Default @claudecode_fzf_preview is 'on'"
-}
-```
-
-**Phase Complete**
-
-### Green Phase: 最小実装と成功確認
-- [ ] ブリーフィング
-- [ ] `shared.sh` が正しく動作することを確認（変更不要の場合が多い）
-- [ ] テストを実行して成功することを確認
-
-**Phase Complete**
-
-### Refactor Phase: 品質改善と継続成功確認
-- [ ] ブリーフィング
-- [ ] テストを実行し、継続して成功することを確認
-
-**Phase Complete**
-
----
-
-## Process 10: 統合テスト追加
-
-<!--@process-briefing
-category: testing
-tags: [integration, testing]
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
-
----
-
-### 10.1 設計詳細
-
-**目的**: プレビュー機能の統合テストを追加する。
-
-**テストファイル**: `tests/test_preview.sh` （Process 1で作成したファイルを拡張）
-
-**追加テストケース**:
-1. プレビュースクリプトが実際のtmuxペインで動作すること（モック使用）
-2. select_claude_launcher.sh と preview_pane.sh の連携
-3. プレビュー無効時に `--preview` オプションが追加されないこと
-4. エッジケース（ペインが存在しない場合など）
-
----
-
-### Red Phase: テスト作成と失敗確認
-- [ ] ブリーフィング
-- [ ] 統合テストケースを追加
-- [ ] テストを実行して失敗することを確認
-
-**Phase Complete**
-
-### Green Phase: 最小実装と成功確認
-- [ ] ブリーフィング
-- [ ] 必要に応じて実装を調整
-- [ ] テストを実行して成功することを確認
-
-**Phase Complete**
-
-### Refactor Phase: 品質改善と継続成功確認
-- [ ] ブリーフィング
-- [ ] テストコードのリファクタリング
-- [ ] テストを実行し、継続して成功することを確認
-
-**Phase Complete**
-
----
-
-## Process 50: フォローアップ
-
-<!--@process-briefing
-category: followup
-tags: []
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
-
----
-
-{{実装後に仕様変更などが発生した場合は、ここにProcessを追加する}}
-
----
-
-## Process 100: リファクタリング・品質向上
-
-<!--@process-briefing
-category: quality
-tags: [refactoring, shellcheck]
--->
-
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
-
----
-
-### 100.1 品質チェックリスト
-
-- [ ] ShellCheck で全スクリプトを検証
+## Process 9: 統合テスト・キーバインド設定
+
+### Red
+- [ ] テスト: `tests/facilitator/test_integration.sh` 作成
+  - エンドツーエンドフロー確認
+  - キーバインド起動からアクション実行まで
+  - 各アクションの動作確認
+  - エラーケースの確認
+  - 想定結果: 全フローが正常に動作
+
+### Green
+- [ ] `claudecode_status.tmux` にキーバインド追加
   ```bash
-  shellcheck scripts/preview_pane.sh
-  shellcheck scripts/select_claude_launcher.sh
-  shellcheck scripts/select_claude.sh
+  # 既存のキーバインド
+  select_key=$(get_tmux_option "@claudecode_select_key" "g")
+  tmux bind-key "$select_key" run-shell "$scripts_dir/select_claude_launcher.sh"
+
+  # 新規追加: 次のアクションUI
+  next_action_key=$(get_tmux_option "@claudecode_next_action_key" "n")
+  tmux bind-key "$next_action_key" run-shell "$scripts_dir/facilitator/facilitator_launcher.sh"
   ```
-- [ ] 既存のテストスイートが全て通過することを確認
+- [ ] tmuxオプション追加
   ```bash
-  bash tests/test_detection.sh
-  bash tests/test_output.sh
-  bash tests/test_status.sh
-  bash tests/test_preview.sh
+  # 次のアクションUIのキーバインド（デフォルト: n）
+  set -g @claudecode_next_action_key "n"
+
+  # 機能の有効/無効
+  set -g @claudecode_facilitator "on"
+
+  # タイムアウト（秒）
+  set -g @claudecode_facilitator_timeout "30"
   ```
-- [ ] パフォーマンス確認（プレビュー有効/無効で比較）
-- [ ] エラーハンドリングの確認
+- [ ] 統合テスト実行
+
+### Refactor
+- [ ] キーバインド設定の自動インストールスクリプト
+- [ ] アンインストールスクリプト
+- [ ] バージョン管理（設定ファイル）
 
 ---
 
-### Red Phase: 品質改善テスト追加
-- [ ] ブリーフィング
-- [ ] パフォーマンステストの追加（オプション）
-- [ ] エッジケーステストの追加
+## Process 10: facilitator.sh ユニットテスト
 
-**Phase Complete**
+### Red
+- [ ] テストケース拡充
+  - タイムアウト処理
+  - 中断処理（Ctrl-C）
+  - 並列実行時の競合
 
-### Green Phase: リファクタリング実施
-- [ ] ブリーフィング
-- [ ] 重複コードの統合
-- [ ] エラーメッセージの改善
-- [ ] コメントの追加・改善
+### Green
+- [ ] テスト実装
 
-**Phase Complete**
-
-### Refactor Phase: 最終確認
-- [ ] ブリーフィング
-- [ ] 全テスト実行
-- [ ] コードレビュー準備
-
-**Phase Complete**
+### Refactor
+- [ ] テストヘルパー関数抽出
+- [ ] モック機構整備
 
 ---
 
-## Process 200: ドキュメンテーション
+## Process 11: context-builder.sh ユニットテスト
 
-<!--@process-briefing
-category: documentation
-tags: [readme, documentation]
--->
+### Red
+- [ ] テストケース拡充
+  - Gitリポジトリなしの場合
+  - サブモジュール含むリポジトリ
+  - シンボリックリンク経由のパス
 
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
+### Green
+- [ ] テスト実装
 
----
-
-### 200.1 ドキュメント更新内容
-
-**変更ファイル**:
-1. `README.md`
-2. `README_ja.md`
-
-**追加内容**:
-
-#### Configuration Options テーブルに追加（README.md 行81付近）:
-```markdown
-| `@claudecode_fzf_preview` | `on` | Enable/disable fzf preview (`on`/`off`) |
-| `@claudecode_fzf_preview_lines` | `30` | Number of lines to show in preview |
-```
-
-#### Configuration Options テーブルに追加（README_ja.md 行81付近）:
-```markdown
-| `@claudecode_fzf_preview` | `on` | fzfプレビューの有効/無効 (`on`/`off`) |
-| `@claudecode_fzf_preview_lines` | `30` | プレビューに表示する行数 |
-```
-
-#### 使用例セクションに追加:
-```markdown
-### Preview Feature
-
-When using the process selector (`@claudecode_select_key`), you can see a preview of the selected pane's content:
-
-\`\`\`bash
-# Enable preview (default)
-set -g @claudecode_fzf_preview "on"
-
-# Disable preview
-set -g @claudecode_fzf_preview "off"
-
-# Set preview lines
-set -g @claudecode_fzf_preview_lines "50"
-\`\`\`
-```
+### Refactor
+- [ ] エッジケースカバレッジ向上
 
 ---
 
-### Red Phase: ドキュメント設計
-- [ ] ブリーフィング
-- [ ] 文書化対象を特定
-- [ ] ドキュメント構成を作成
-- [ ] **成功条件**: 変更箇所が明確に特定されている
+## Process 12: action-selector.sh ユニットテスト
 
-**Phase Complete**
+### Red
+- [ ] テストケース拡充
+  - fzf未インストール時
+  - カスタムキーバインド
+  - プレビュー表示
 
-### Green Phase: ドキュメント記述
-- [ ] ブリーフィング
-- [ ] README.md を更新
-- [ ] README_ja.md を更新
-- [ ] **成功条件**: 全変更が反映されている
+### Green
+- [ ] テスト実装
 
-**Phase Complete**
-
-### Refactor Phase: 品質確認
-- [ ] ブリーフィング
-- [ ] Markdown構文チェック
-- [ ] リンク確認
-- [ ] 最終レビュー
-
-**Phase Complete**
+### Refactor
+- [ ] UIテスト自動化（expect使用）
 
 ---
 
-## Process 300: OODAフィードバックループ（教訓・知見の保存）
+## Process 13: action-executor.sh ユニットテスト
 
-<!--@process-briefing
-category: ooda_feedback
-tags: [ooda, lessons, feedback]
--->
+### Red
+- [ ] テストケース拡充
+  - プラグイン実行失敗時
+  - 不正なpane_id
+  - 権限エラー
 
-### Briefing (auto-generated)
-**Related Lessons**: (auto-populated from stigmergy)
-**Known Patterns**: (auto-populated from patterns)
-**Watch Points**: (auto-populated from failure_cases)
+### Green
+- [ ] テスト実装
 
----
-
-### Red Phase: フィードバック収集設計
-
-**Observe（観察）**
-- [ ] ブリーフィング
-- [ ] 実装過程で発生した問題・課題を収集
-- [ ] テスト結果から得られた知見を記録
-- [ ] コードレビューのフィードバックを整理
-
-**Orient（方向付け）**
-- [ ] ブリーフィング
-- [ ] 収集した情報をカテゴリ別に分類
-  - Technical: 技術的な知見・パターン
-  - Process: プロセス改善に関する教訓
-  - Antipattern: 避けるべきパターン
-  - Best Practice: 推奨パターン
-- [ ] 重要度（Critical/High/Medium/Low）を設定
-
-- [ ] **成功条件**: 収集対象が特定され、分類基準が明確
-
-**Phase Complete**
-
-### Green Phase: 教訓・知見の永続化
-
-**Decide（決心）**
-- [ ] ブリーフィング
-- [ ] 保存すべき教訓・知見を選定
-- [ ] 各項目の保存先を決定
-  - Serena Memory: 組織的な知見
-  - stigmergy/lessons: プロジェクト固有の教訓
-  - stigmergy/code-insights: コードパターン・実装知見
-
-**Act（行動）**
-- [ ] ブリーフィング
-- [ ] serena-v4のmcp__serena__write_memoryで教訓を永続化
-- [ ] コードに関する知見をMarkdownで記録
-- [ ] 関連するコード箇所にコメントを追加（必要に応じて）
-
-- [ ] **成功条件**: 全教訓がSerena Memoryまたはstigmergyに保存済み
-
-**Phase Complete**
-
-### Refactor Phase: フィードバック品質改善
-
-**Feedback Loop**
-- [ ] ブリーフィング
-- [ ] 保存した教訓の品質を検証
-  - 再現可能性: 他のプロジェクトで適用可能か
-  - 明確性: 内容が明確で理解しやすいか
-  - 実用性: 実際に役立つ情報か
-- [ ] 重複・矛盾する教訓を統合・整理
-- [ ] メタ学習: OODAプロセス自体の改善点を記録
-
-**Cross-Feedback**
-- [ ] ブリーフィング
-- [ ] 他のProcess（100, 200）との連携を確認
-- [ ] 将来のミッションへの引き継ぎ事項を整理
-
-- [ ] **成功条件**: 教訓がSerena Memoryで検索可能、insights文書が整備済み
-
-**Phase Complete**
+### Refactor
+- [ ] リトライ機構追加
 
 ---
 
-# Management
+## Process 14: session-state.sh ユニットテスト
 
-## Blockers
+### Red
+- [ ] テストケース拡充
+  - 同時書き込み競合
+  - ディスク容量不足
+  - 不正なJSON
 
-| ID | Description | Status | Resolution |
-|----|-------------|--------|-----------|
-| - | なし | - | - |
+### Green
+- [ ] テスト実装
 
-## Lessons
-
-| ID | Insight | Severity | Applied |
-|----|---------|----------|---------|
-| L1 | fzf --preview は環境変数経由でデータを渡すと安全 | medium | - |
-| L2 | tmux popup サイズはプレビュー表示を考慮して拡大が必要 | medium | - |
-
-## Feedback Log
-
-| Date | Type | Content | Status |
-|------|------|---------|--------|
-| 2026-01-17 | マルチLLM合議 | 修正付き採用: ポップアップサイズ拡大、エスケープ処理追加 | closed |
-
-## Completion Checklist
-- [x] すべてのProcess完了
-- [x] すべてのテスト合格（test_detection: 14, test_output: 9, test_preview: 11）
-- [ ] コードレビュー完了
-- [x] ドキュメント更新完了
-- [x] マージ可能な状態
+### Refactor
+- [ ] ロック機構追加（flock）
 
 ---
 
-<!--
-Process番号規則
-- 1-9: 機能実装
-- 10-49: テスト拡充
-- 50-99: フォローアップ
-- 100-199: 品質向上（リファクタリング）
-- 200-299: ドキュメンテーション
-- 300+: OODAフィードバックループ（教訓・知見保存）
--->
+## Process 15: プラグインシステムユニットテスト
 
+### Red
+- [ ] テストケース拡充
+  - メタデータ不正
+  - プラグイン実行権限なし
+  - プラグイン無限ループ
+
+### Green
+- [ ] テスト実装
+
+### Refactor
+- [ ] タイムアウト機構（プラグイン実行）
+
+---
+
+## Process 16: エラーハンドリングテスト
+
+### Red
+- [ ] 全コンポーネントのエラーパス確認
+- [ ] 異常系テストケース作成
+
+### Green
+- [ ] テスト実装
+
+### Refactor
+- [ ] エラーメッセージ標準化
+
+---
+
+## Process 17: パフォーマンステスト
+
+### Red
+- [ ] 起動時間測定（目標: 1秒以内）
+- [ ] メモリ使用量測定
+- [ ] 並列実行時の負荷測定
+
+### Green
+- [ ] ベンチマークスクリプト作成
+
+### Refactor
+- [ ] ボトルネック最適化
+
+---
+
+## Process 18: 互換性テスト
+
+### Red
+- [ ] 各tmuxバージョンでテスト（2.x, 3.x）
+- [ ] macOS / Linux 両環境でテスト
+- [ ] bash 3.x / 4.x / 5.x でテスト
+
+### Green
+- [ ] CI/CDパイプライン構築
+
+### Refactor
+- [ ] 互換性レイヤー追加
+
+---
+
+## Process 19: セキュリティテスト
+
+### Red
+- [ ] コマンドインジェクション確認
+- [ ] パストラバーサル確認
+- [ ] 権限昇格確認
+
+### Green
+- [ ] セキュリティスキャン（shellcheck）
+
+### Refactor
+- [ ] サニタイジング強化
+
+---
+
+## Process 50: エッジケース対応
+
+### Red
+- [ ] エッジケース一覧作成
+  - ネストしたtmuxセッション
+  - SSH経由のtmux
+  - tmux-in-docker
+
+### Green
+- [ ] 各エッジケースの対応実装
+
+### Refactor
+- [ ] ドキュメント更新（既知の制限）
+
+---
+
+## Process 51: エラーメッセージ改善
+
+### Red
+- [ ] エラーメッセージレビュー
+- [ ] ユーザビリティテスト
+
+### Green
+- [ ] わかりやすいエラーメッセージに改善
+- [ ] トラブルシューティングガイド作成
+
+### Refactor
+- [ ] 多言語対応（オプショナル）
+
+---
+
+## Process 52: ロギング機構強化
+
+### Red
+- [ ] ログレベル定義（DEBUG, INFO, WARN, ERROR）
+- [ ] ログローテーション仕様
+
+### Green
+- [ ] ロギングライブラリ実装
+- [ ] 各コンポーネントにロギング追加
+
+### Refactor
+- [ ] ログ解析ツール作成
+
+---
+
+## Process 53: 設定ファイル拡張
+
+### Red
+- [ ] 設定項目一覧作成
+  - タイムアウト
+  - デフォルトアクション
+  - プラグイン有効/無効
+
+### Green
+- [ ] `~/.config/facilitator/config.json` 対応
+- [ ] 設定バリデーション
+
+### Refactor
+- [ ] 設定マイグレーション機構
+
+---
+
+## Process 54: デバッグモード追加
+
+### Red
+- [ ] デバッグ出力仕様
+- [ ] トレース機構仕様
+
+### Green
+- [ ] `FACILITATOR_DEBUG=1` 対応
+- [ ] 詳細ログ出力
+
+### Refactor
+- [ ] デバッグヘルパースクリプト
+
+---
+
+## Process 55: バックワード互換性確保
+
+### Red
+- [ ] 既存機能への影響確認
+- [ ] 破壊的変更の洗い出し
+
+### Green
+- [ ] 互換性レイヤー実装
+
+### Refactor
+- [ ] 非推奨機能のマーキング
+
+---
+
+## Process 56: クリーンアップ処理強化
+
+### Red
+- [ ] リソースリーク確認
+- [ ] 一時ファイル削除確認
+
+### Green
+- [ ] trapハンドラ強化
+- [ ] クリーンアップスクリプト
+
+### Refactor
+- [ ] ガベージコレクション機構
+
+---
+
+## Process 57: 復旧機構実装
+
+### Red
+- [ ] 障害シナリオ作成
+- [ ] 復旧手順定義
+
+### Green
+- [ ] 自動復旧スクリプト
+- [ ] 状態復元機能
+
+### Refactor
+- [ ] 障害検知機構
+
+---
+
+## Process 58: ドライランモード拡張
+
+### Red
+- [ ] ドライラン出力仕様
+- [ ] 副作用のシミュレーション
+
+### Green
+- [ ] `--dry-run` 全コンポーネント対応
+
+### Refactor
+- [ ] ドライランレポート生成
+
+---
+
+## Process 59: ヘルプ・使い方ガイド
+
+### Red
+- [ ] ヘルプメッセージ仕様
+- [ ] 使用例一覧
+
+### Green
+- [ ] `--help` オプション実装
+- [ ] マニュアルページ作成
+
+### Refactor
+- [ ] インタラクティブチュートリアル
+
+---
+
+## Process 100: コードリファクタリング
+
+### Red
+- [ ] コード品質メトリクス測定
+  - 循環的複雑度
+  - 関数行数
+  - 重複コード
+
+### Green
+- [ ] 関数分割
+- [ ] 共通処理の抽出
+
+### Refactor
+- [ ] 命名規則統一
+- [ ] コメント整備
+
+---
+
+## Process 101: パフォーマンス最適化
+
+### Red
+- [ ] ボトルネック特定
+- [ ] ベンチマーク基準値設定
+
+### Green
+- [ ] 並列処理導入
+- [ ] キャッシュ機構
+
+### Refactor
+- [ ] 不要な処理削除
+
+---
+
+## Process 102: 依存関係最適化
+
+### Red
+- [ ] 依存パッケージ一覧
+- [ ] 必須/オプショナル分類
+
+### Green
+- [ ] オプショナル依存の遅延ロード
+- [ ] フォールバック実装
+
+### Refactor
+- [ ] 依存関係ドキュメント
+
+---
+
+## Process 103: エラーハンドリング統一
+
+### Red
+- [ ] エラーハンドリングパターン確認
+- [ ] 一貫性のないエラー処理の洗い出し
+
+### Green
+- [ ] エラーハンドリングライブラリ
+- [ ] 統一的なエラー処理
+
+### Refactor
+- [ ] エラーコード体系整備
+
+---
+
+## Process 104: テストカバレッジ向上
+
+### Red
+- [ ] カバレッジ測定（目標: 80%以上）
+- [ ] 未テストコードの特定
+
+### Green
+- [ ] テストケース追加
+
+### Refactor
+- [ ] テストデータ管理
+
+---
+
+## Process 105: CI/CD パイプライン構築
+
+### Red
+- [ ] CI/CD要件定義
+- [ ] テスト自動化戦略
+
+### Green
+- [ ] GitHub Actions設定
+- [ ] 自動テスト実行
+
+### Refactor
+- [ ] デプロイ自動化
+
+---
+
+## Process 106: バージョン管理戦略
+
+### Red
+- [ ] セマンティックバージョニング適用
+- [ ] 変更履歴管理
+
+### Green
+- [ ] CHANGELOGファイル作成
+- [ ] バージョンタグ運用
+
+### Refactor
+- [ ] リリースノート自動生成
+
+---
+
+## Process 107: 国際化対応
+
+### Red
+- [ ] メッセージ外部化
+- [ ] 言語ファイル設計
+
+### Green
+- [ ] i18n機構実装（オプショナル）
+
+### Refactor
+- [ ] 多言語テスト
+
+---
+
+## Process 108: アクセシビリティ向上
+
+### Red
+- [ ] スクリーンリーダー対応確認
+- [ ] カラーブラインド対応確認
+
+### Green
+- [ ] 色覚補正対応
+- [ ] 音声フィードバック
+
+### Refactor
+- [ ] ユーザビリティテスト
+
+---
+
+## Process 109: モニタリング・分析
+
+### Red
+- [ ] メトリクス定義
+  - 使用頻度
+  - アクション選択率
+  - エラー率
+
+### Green
+- [ ] メトリクス収集機構（opt-in）
+
+### Refactor
+- [ ] ダッシュボード作成
+
+---
+
+## Process 200: README.md 作成
+
+### Red
+- [ ] README構成確認
+  - インストール
+  - 使い方
+  - 設定
+  - トラブルシューティング
+
+### Green
+- [ ] `/Users/ttakeda/repos/tmux-claudecode-status/README.md` 更新
+  - Facilitator機能セクション追加
+  - スクリーンショット追加
+  - 設定例追加
+
+### Refactor
+- [ ] バッジ追加（CI status, version）
+
+---
+
+## Process 201: プラグイン開発ガイド
+
+### Red
+- [ ] 開発ガイド構成
+  - プラグイン仕様
+  - サンプルコード
+  - ベストプラクティス
+
+### Green
+- [ ] `scripts/facilitator/plugins/DEVELOPMENT.md` 作成
+
+### Refactor
+- [ ] プラグインテンプレート提供
+
+---
+
+## Process 202: アーキテクチャドキュメント
+
+### Red
+- [ ] アーキテクチャ図作成
+  - コンポーネント図
+  - シーケンス図
+  - データフロー図
+
+### Green
+- [ ] `docs/ARCHITECTURE.md` 作成
+
+### Refactor
+- [ ] Mermaid図の追加
+
+---
+
+## Process 203: API ドキュメント
+
+### Red
+- [ ] 公開API一覧
+- [ ] 内部API一覧
+
+### Green
+- [ ] `docs/API.md` 作成
+
+### Refactor
+- [ ] コード内ドキュメント同期
+
+---
+
+## Process 204: トラブルシューティングガイド
+
+### Red
+- [ ] よくある問題一覧
+- [ ] 解決手順
+
+### Green
+- [ ] `docs/TROUBLESHOOTING.md` 作成
+
+### Refactor
+- [ ] FAQ追加
+
+---
+
+## Process 205: 設定リファレンス
+
+### Red
+- [ ] 全設定項目の列挙
+- [ ] デフォルト値の記載
+
+### Green
+- [ ] `docs/CONFIGURATION.md` 作成
+
+### Refactor
+- [ ] 設定例の追加
+
+---
+
+## Process 206: CONTRIBUTING.md
+
+### Red
+- [ ] コントリビューションガイドライン
+- [ ] コードスタイル
+- [ ] プルリクエストプロセス
+
+### Green
+- [ ] `CONTRIBUTING.md` 作成
+
+### Refactor
+- [ ] Issue/PRテンプレート
+
+---
+
+## Process 207: CHANGELOGメンテナンス
+
+### Red
+- [ ] 変更履歴フォーマット統一
+- [ ] リリースノート作成
+
+### Green
+- [ ] `CHANGELOG.md` 更新
+
+### Refactor
+- [ ] 自動生成スクリプト
+
+---
+
+## Process 208: デモ・スクリーンキャスト作成
+
+### Red
+- [ ] デモシナリオ作成
+- [ ] スクリーンキャストツール選定
+
+### Green
+- [ ] デモ動画作成
+- [ ] GIF作成
+
+### Refactor
+- [ ] YouTubeアップロード（オプショナル）
+
+---
+
+## Process 209: ドキュメントサイト構築
+
+### Red
+- [ ] ドキュメントサイト要件
+- [ ] 静的サイトジェネレータ選定
+
+### Green
+- [ ] GitHub Pages設定
+- [ ] ドキュメントサイト公開
+
+### Refactor
+- [ ] 検索機能追加
+
+---
+
+## Process 300: OODA フィードバック
+
+### Red
+- [ ] 振り返りフレームワーク準備
+  - Observe: 何を観察したか
+  - Orient: どう解釈したか
+  - Decide: 何を決定したか
+  - Act: 何を実行したか
+
+### Green
+- [ ] プロジェクト振り返り実施
+- [ ] 教訓の文書化
+  - 成功要因
+  - 失敗要因
+  - 改善点
+
+### Refactor
+- [ ] 次期プロジェクトへの知見継承
+- [ ] `stigmergy/briefings/facilitator-lessons-learned.md` 作成
+- [ ] チーム共有セッション
+
+---
+
+# メタ情報
+
+## 実装優先度
+1. **Phase 1-3（Process 1-9）**: 最優先 - コア機能実装
+2. **Phase 4（Process 10-19）**: 高優先 - 品質保証
+3. **Phase 5-6（Process 50-109）**: 中優先 - 安定化・品質向上
+4. **Phase 7（Process 200-209）**: 中優先 - ドキュメント整備
+5. **Phase 8（Process 300）**: 完了時 - 振り返り
+
+## 想定工数
+- Phase 1-3: 8-12時間
+- Phase 4: 6-8時間
+- Phase 5-6: 10-15時間
+- Phase 7: 4-6時間
+- Phase 8: 2-3時間
+
+**合計**: 30-44時間
+
+## リスク
+1. **tmuxバージョン互換性**: 複数バージョンでのテスト必須
+2. **プラグイン品質**: サンドボックス化検討
+3. **パフォーマンス**: 大量セッション時の負荷確認
+
+## 成功基準
+- [ ] 全ユニットテスト通過
+- [ ] 統合テスト通過
+- [ ] 起動時間 < 1秒
+- [ ] ドキュメント完備
+- [ ] プラグイン3個以上作成（サンプル含む）
