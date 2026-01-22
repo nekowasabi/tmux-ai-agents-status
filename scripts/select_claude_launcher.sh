@@ -84,23 +84,37 @@ fi
 tmux popup -E -w 80% -h 60% "
     trap 'rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE' '$RESULT_FILE'; exit 130' INT TERM
 
-    selected=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse --prompt='Select Claude: ' $PREVIEW_OPT)
+    selected_output=\$(cat '$TEMP_DATA' | fzf --height=100% --reverse \
+        --prompt='Select Claude: ' \
+        --header='Enter: Switch | Ctrl+S: Send Prompt' \
+        --expect=ctrl-s \
+        $PREVIEW_OPT)
+    key=\$(echo \"\$selected_output\" | head -1)
+    selected=\$(echo \"\$selected_output\" | tail -n +2 | head -1)
     if [ -n \"\$selected\" ]; then
         line_num=\$(grep -nF \"\$selected\" '$TEMP_DATA' | head -1 | cut -d: -f1)
         if [ -n \"\$line_num\" ]; then
             pane_id=\$(sed -n \"\${line_num}p\" '${TEMP_DATA}_panes')
-            echo \"\$pane_id\" > '$RESULT_FILE'
+            echo \"\$key|\$pane_id\" > '$RESULT_FILE'
         fi
     fi
     rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE'
 "
 
-# Step 3: After popup closes, execute focus_session.sh in original context
+# Step 3: After popup closes, execute action based on key pressed
 if [ -f "$RESULT_FILE" ]; then
-    pane_id=$(cat "$RESULT_FILE")
+    result=$(cat "$RESULT_FILE")
     rm -f "$RESULT_FILE"
+
+    key="${result%%|*}"
+    pane_id="${result#*|}"
+
     if [ -n "$pane_id" ]; then
-        "$CURRENT_DIR/focus_session.sh" "$pane_id"
+        if [ "$key" = "ctrl-s" ]; then
+            "$CURRENT_DIR/send_prompt.sh" "$pane_id"
+        else
+            "$CURRENT_DIR/focus_session.sh" "$pane_id"
+        fi
     fi
 else
     # キャンセル時は元のペインにフォーカスを確実に戻す
