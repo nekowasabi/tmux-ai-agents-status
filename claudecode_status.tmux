@@ -31,6 +31,35 @@ update_tmux_option() {
     set_tmux_option "$option" "$new_value"
 }
 
+# Setup keybinding for facilitator (next action UI)
+setup_facilitator_keybinding() {
+    local facilitator_enabled
+    facilitator_enabled=$(get_tmux_option "@claudecode_facilitator" "on")
+
+    # Skip if facilitator is disabled
+    if [ "$facilitator_enabled" = "off" ]; then
+        return
+    fi
+
+    local next_action_key
+    next_action_key=$(get_tmux_option "@claudecode_next_action_key" "n")
+
+    # Skip if no key is configured (empty string means disabled)
+    if [ -z "$next_action_key" ]; then
+        return
+    fi
+
+    local facilitator_script="$CURRENT_DIR/scripts/facilitator/facilitator_launcher.sh"
+
+    # Check if script exists
+    if [ ! -x "$facilitator_script" ]; then
+        return
+    fi
+
+    # Bind the key to run facilitator_launcher.sh
+    tmux bind-key "$next_action_key" run-shell "$facilitator_script"
+}
+
 # Setup keybinding for Claude Code process selection
 setup_select_keybinding() {
     local select_key
@@ -76,8 +105,9 @@ main() {
     update_tmux_option "status-format[1]"
     update_tmux_option "pane-border-format"
 
-    # Setup optional keybinding
+    # Setup optional keybindings
     setup_select_keybinding
+    setup_facilitator_keybinding
 }
 
 main "$@"
