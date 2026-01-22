@@ -646,7 +646,7 @@ tmux-claudecode-status/
 ## Process 8: session-state.sh 実装
 
 ### Red
-- [ ] テスト: `tests/facilitator/test_session_state.sh` 作成
+- [x] テスト: `tests/facilitator/test_session_state.sh` 作成
   - 状態保存確認
   - 状態読み込み確認
   - 状態一覧取得確認
@@ -654,7 +654,7 @@ tmux-claudecode-status/
   - 想定結果: 状態が正しく永続化される
 
 ### Green
-- [ ] `scripts/facilitator/session-state.sh` 作成
+- [x] `scripts/facilitator/session-state.sh` 作成
   ```bash
   #!/usr/bin/env bash
   # session-state.sh - セッション状態管理
@@ -741,7 +741,7 @@ tmux-claudecode-status/
 ## Process 9: 統合テスト・キーバインド設定
 
 ### Red
-- [ ] テスト: `tests/facilitator/test_integration.sh` 作成
+- [x] テスト: `tests/facilitator/test_integration.sh` 作成
   - エンドツーエンドフロー確認
   - キーバインド起動からアクション実行まで
   - 各アクションの動作確認
@@ -749,7 +749,7 @@ tmux-claudecode-status/
   - 想定結果: 全フローが正常に動作
 
 ### Green
-- [ ] `claudecode_status.tmux` にキーバインド追加
+- [x] `claudecode_status.tmux` にキーバインド追加
   ```bash
   # 既存のキーバインド
   select_key=$(get_tmux_option "@claudecode_select_key" "g")
@@ -759,7 +759,7 @@ tmux-claudecode-status/
   next_action_key=$(get_tmux_option "@claudecode_next_action_key" "n")
   tmux bind-key "$next_action_key" run-shell "$scripts_dir/facilitator/facilitator_launcher.sh"
   ```
-- [ ] tmuxオプション追加
+- [x] tmuxオプション追加
   ```bash
   # 次のアクションUIのキーバインド（デフォルト: n）
   set -g @claudecode_next_action_key "n"
@@ -770,7 +770,7 @@ tmux-claudecode-status/
   # タイムアウト（秒）
   set -g @claudecode_facilitator_timeout "30"
   ```
-- [ ] 統合テスト実行
+- [x] 統合テスト実行
 
 ### Refactor
 - [ ] キーバインド設定の自動インストールスクリプト
