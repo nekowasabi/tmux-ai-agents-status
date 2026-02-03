@@ -71,7 +71,7 @@ while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_na
     fi
 
     # Include session name for cross-session visibility and status icon
-    display_line="  ${emoji} #${window_index} ${project_name} [${session_name}] ${status_icon}"
+    display_line="  ${status_icon}${emoji} #${window_index} ${project_name} [${session_name}]"
     echo "$display_line" >> "$TEMP_DATA"
     echo "$pane_id" >> "${TEMP_DATA}_panes"
 done <<< "$process_data"

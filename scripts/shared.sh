@@ -46,8 +46,8 @@ write_shared_cache() {
         /@claudecode_terminal_alacritty/ { gsub(/@claudecode_terminal_alacritty /,""); tala=$0 }
         /@claudecode_terminal_unknown/ { gsub(/@claudecode_terminal_unknown /,""); tu=$0 }
         END {
-            if (wd=="") wd="working"
-            if (id=="") id="idle"
+            if (wd=="") wd="🤖"
+            if (id=="") id="🔔"
             if (ti=="") ti="🍎"
             if (tw=="") tw="⚡"
             if (tg=="") tg="👻"

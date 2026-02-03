@@ -74,8 +74,8 @@ generate_process_list() {
         ' "$BATCH_TMUX_OPTIONS_FILE")"
     else
         # フォールバック: tmuxから直接取得
-        working_dot=$(get_tmux_option "@claudecode_working_dot" "working")
-        idle_dot=$(get_tmux_option "@claudecode_idle_dot" "idle")
+        working_dot=$(get_tmux_option "@claudecode_working_dot" "🤖")
+        idle_dot=$(get_tmux_option "@claudecode_idle_dot" "🔔")
         terminal_iterm=$(get_tmux_option "@claudecode_terminal_iterm" "🍎")
         terminal_wezterm=$(get_tmux_option "@claudecode_terminal_wezterm" "⚡")
         terminal_ghostty=$(get_tmux_option "@claudecode_terminal_ghostty" "👻")
@@ -84,7 +84,7 @@ generate_process_list() {
         terminal_alacritty=$(get_tmux_option "@claudecode_terminal_alacritty" "🔲")
         terminal_unknown=$(get_tmux_option "@claudecode_terminal_unknown" "❓")
     fi
-    : "${working_dot:=working}" "${idle_dot:=idle}"
+    : "${working_dot:=🤖}" "${idle_dot:=🔔}"
     : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_windows:=🪟}" "${terminal_vscode:=📝}" "${terminal_alacritty:=🔲}" "${terminal_unknown:=❓}"
 
     # 現在時刻とthreshold（EPOCHSECONDS使用で高速化）
@@ -174,9 +174,8 @@ generate_process_list() {
 
         # Display line
         pidx = "#" window_index
-        line = emoji " " pidx " " proj
+        line = icon emoji " " pidx " " proj
         if (session_name != "") line = line " [" session_name "]"
-        line = line " " icon
 
         # Store for sorting
         data[count] = pane_id "|" emoji "|" pidx "|" proj "|" status "|" line
