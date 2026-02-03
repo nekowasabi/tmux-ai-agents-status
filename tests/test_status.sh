@@ -174,8 +174,8 @@ test_session_states_numbers_are_valid() {
     result=$(get_session_states)
 
     local working idle
-    working=$(echo "$result" | grep -oP 'working:\K[0-9]+')
-    idle=$(echo "$result" | grep -oP 'idle:\K[0-9]+')
+    working=$(echo "$result" | awk -F'[:,]' '{print $2}')
+    idle=$(echo "$result" | awk -F'[:,]' '{print $4}')
 
     if [ "$working" -ge 0 ] && [ "$idle" -ge 0 ]; then
         ((TESTS_RUN++))
@@ -242,8 +242,8 @@ test_session_states_are_numeric() {
     result=$(get_session_states)
 
     local working idle
-    working=$(echo "$result" | grep -oP 'working:\K[0-9]+')
-    idle=$(echo "$result" | grep -oP 'idle:\K[0-9]+')
+    working=$(echo "$result" | awk -F'[:,]' '{print $2}')
+    idle=$(echo "$result" | awk -F'[:,]' '{print $4}')
 
     # Check if extracted values are numeric
     if [[ "$working" =~ ^[0-9]+$ ]] && [[ "$idle" =~ ^[0-9]+$ ]]; then

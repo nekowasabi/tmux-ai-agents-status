@@ -10,12 +10,8 @@ ORIGINAL_PANE=$(tmux display-message -p '#{pane_id}')
 # Step 1: Get process list using internal format (runs OUTSIDE popup)
 source "$CURRENT_DIR/shared.sh"
 
-# Try to use shared cache first
-if try_use_shared_cache 2>/dev/null; then
-    : # Cache loaded
-else
-    init_batch_cache
-fi
+# Initialize batch cache for efficient data gathering
+init_batch_cache
 
 # Get raw process data
 process_data=$(get_all_claude_info_batch 2>/dev/null)
@@ -61,7 +57,7 @@ while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_na
     # Determine status (working/idle) based on TTY mtime
     status_icon="$idle_dot"
     if [ -n "$tty_path" ] && [ -e "$tty_path" ]; then
-        tty_mtime=$(stat -f "%m" "$tty_path" 2>/dev/null || echo "0")
+        tty_mtime=$(get_file_mtime "$tty_path" 2>/dev/null || echo "0")
         if [ -n "$tty_mtime" ] && [ "$tty_mtime" != "0" ]; then
             time_diff=$((current_time - tty_mtime))
             if [ "$time_diff" -lt "$working_threshold" ]; then

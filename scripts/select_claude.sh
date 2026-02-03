@@ -103,7 +103,11 @@ generate_process_list() {
         local tty_paths
         tty_paths=$(echo "$batch_info" | awk -F'|' '{print $5}' | sort -u | grep -v '^$')
         if [ -n "$tty_paths" ]; then
-            tty_stat_data=$(echo "$tty_paths" | xargs stat -f "%N %m" 2>/dev/null)
+            if [[ "$(get_os)" == "Darwin" ]]; then
+                tty_stat_data=$(echo "$tty_paths" | xargs stat -f "%N %m" 2>/dev/null)
+            else
+                tty_stat_data=$(echo "$tty_paths" | xargs stat -c "%n %Y" 2>/dev/null)
+            fi
         fi
     fi
 
