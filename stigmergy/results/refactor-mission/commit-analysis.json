@@ -1,0 +1,348 @@
+{
+  "analysis_summary": {
+    "total_files_changed": 5,
+    "total_files_new": 10,
+    "total_lines_added": 1710,
+    "total_lines_deleted": 1262,
+    "net_change": 448,
+    "refactoring_type": "Module extraction with P0 bug fixes",
+    "backward_compatible": true,
+    "overall_risk": "low"
+  },
+
+  "file_analysis": [
+    {
+      "file": "scripts/shared.sh",
+      "status": "modified",
+      "intent": "refactor",
+      "description": "Converted from 1232-line monolith to 19-line facade that sources 6 modular libraries",
+      "lines_before": 1232,
+      "lines_after": 19,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Facade pattern maintains all existing function APIs"
+    },
+    {
+      "file": "scripts/lib/platform.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted platform detection functions (get_os, get_file_mtime, get_current_timestamp)",
+      "lines": 46,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/lib/tmux_options.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted tmux option read/write functions (get/set_tmux_option, cached variants)",
+      "lines": 113,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/lib/terminal.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted terminal detection and emoji mapping (10 functions, WSL support)",
+      "lines": 518,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/lib/cache_shared.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted inter-process shared cache functions (write/read_shared_cache)",
+      "lines": 213,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/lib/cache_batch.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted batch cache processing (init_batch_cache, 18 batch helper functions)",
+      "lines": 354,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/lib/pane_utils.sh",
+      "status": "new",
+      "intent": "refactor",
+      "description": "Extracted pane utility functions (priority sorting, pane index helpers)",
+      "lines": 50,
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Pure extraction, no behavior changes"
+    },
+    {
+      "file": "scripts/select_claude.sh",
+      "status": "modified",
+      "intent": "fix",
+      "description": "P0 bug fixes: removed grep -oP (non-POSIX), fixed dead code",
+      "changes": "+6/-0",
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Bug fixes for cross-platform compatibility"
+    },
+    {
+      "file": "scripts/select_claude_launcher.sh",
+      "status": "modified",
+      "intent": "fix",
+      "description": "P0 bug fixes: fixed stat -f macOS/Linux compatibility, removed dead calls",
+      "changes": "+10/-0",
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Bug fixes for cross-platform compatibility"
+    },
+    {
+      "file": "tests/test_golden_master.sh",
+      "status": "new",
+      "intent": "test",
+      "description": "New golden master regression test suite (20+ test cases for shared.sh API)",
+      "lines": 403,
+      "test_coverage": "Platform functions, tmux options, terminal priority, status priority, cache functions",
+      "backward_compatible": true,
+      "risk": "none",
+      "reason": "New tests only, no production code changes"
+    },
+    {
+      "file": "stigmergy/results/refactor-mission/survey-structure.md",
+      "status": "new",
+      "intent": "docs",
+      "description": "Refactoring documentation: code structure survey (25KB)",
+      "lines": 712,
+      "backward_compatible": true,
+      "risk": "none",
+      "reason": "Documentation only"
+    },
+    {
+      "file": "stigmergy/results/refactor-mission/survey-deps.md",
+      "status": "new",
+      "intent": "docs",
+      "description": "Refactoring documentation: dependency analysis (16KB)",
+      "lines": 450,
+      "backward_compatible": true,
+      "risk": "none",
+      "reason": "Documentation only"
+    },
+    {
+      "file": "stigmergy/results/refactor-mission/task-plan.md",
+      "status": "new",
+      "intent": "docs",
+      "description": "Refactoring documentation: execution plan (21KB)",
+      "lines": 600,
+      "backward_compatible": true,
+      "risk": "none",
+      "reason": "Documentation only"
+    },
+    {
+      "file": "claudecode_status.tmux",
+      "status": "modified",
+      "intent": "chore",
+      "description": "Minor updates for compatibility with refactored modules",
+      "changes": "+0/-30",
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Small cleanup, no functional changes"
+    },
+    {
+      "file": "tests/test_status.sh",
+      "status": "modified",
+      "intent": "test",
+      "description": "Minor test updates for refactored code",
+      "changes": "+8/-0",
+      "backward_compatible": true,
+      "risk": "low",
+      "reason": "Test updates only"
+    }
+  ],
+
+  "commit_groups": [
+    {
+      "group_id": 1,
+      "group_name": "P0 Bug Fixes - Cross-Platform Compatibility",
+      "type": "fix",
+      "files": [
+        "scripts/select_claude.sh",
+        "scripts/select_claude_launcher.sh"
+      ],
+      "description": "Fixed critical cross-platform compatibility bugs: stat -f macOS/Linux differences, grep -oP non-POSIX regex, removed dead code and dead function calls",
+      "conventional_commit": "fix: P0バグ修正 - クロスプラットフォーム対応とデッドコード除去",
+      "priority": 1,
+      "impact": "Fixes bugs that prevented proper operation on Linux systems",
+      "backward_compatible": true,
+      "risk": "low"
+    },
+    {
+      "group_id": 2,
+      "group_name": "Module Extraction - Refactor shared.sh",
+      "type": "refactor",
+      "files": [
+        "scripts/shared.sh",
+        "scripts/lib/platform.sh",
+        "scripts/lib/tmux_options.sh",
+        "scripts/lib/terminal.sh",
+        "scripts/lib/cache_shared.sh",
+        "scripts/lib/cache_batch.sh",
+        "scripts/lib/pane_utils.sh",
+        "claudecode_status.tmux",
+        "tests/test_status.sh"
+      ],
+      "description": "Extracted monolithic shared.sh (1232 lines) into 6 modular libraries with clear responsibilities. shared.sh converted to thin facade for backward compatibility. Modules: platform (46L), tmux_options (113L), terminal (518L), cache_shared (213L), cache_batch (354L), pane_utils (50L)",
+      "conventional_commit": "refactor: shared.shを6つのモジュールライブラリに分割\n\n- platform.sh: OS検出、ファイルmtime取得\n- tmux_options.sh: tmuxオプション読み書き\n- terminal.sh: ターミナル検出、絵文字マッピング\n- cache_shared.sh: プロセス間共有キャッシュ\n- cache_batch.sh: バッチ処理キャッシュ\n- pane_utils.sh: ペイン優先度、ソート補助\n\n後方互換性: shared.shはファサードとして全モジュールをsource",
+      "priority": 2,
+      "impact": "Improves maintainability by decomposing 1232-line monolith into 6 cohesive modules",
+      "backward_compatible": true,
+      "risk": "low",
+      "details": {
+        "total_modules": 6,
+        "facade_pattern": true,
+        "lines_extracted": 1294,
+        "facade_lines": 19,
+        "reduction_ratio": "68x smaller facade"
+      }
+    },
+    {
+      "group_id": 3,
+      "group_name": "Golden Master Regression Tests",
+      "type": "test",
+      "files": [
+        "tests/test_golden_master.sh"
+      ],
+      "description": "Added comprehensive golden master regression test suite with 20+ test cases covering shared.sh API surface: platform functions, tmux options, terminal priority, status priority, cache behavior, edge cases",
+      "conventional_commit": "test: ゴールデンマスター回帰テストを追加\n\n20+のテストケース:\n- プラットフォーム関数 (get_os, get_file_mtime, get_current_timestamp)\n- tmuxオプション (get/set, キャッシュ, デフォルト値)\n- ターミナル優先度 (iTerm, WezTerm, Ghostty, 他)\n- ステータス優先度 (working/idle)\n- キャッシュ動作 (TTL, 存在チェック)",
+      "priority": 3,
+      "impact": "Provides regression safety for future refactoring",
+      "backward_compatible": true,
+      "risk": "none",
+      "details": {
+        "test_count": 20,
+        "coverage_areas": [
+          "Platform detection (OS, file mtime, timestamps)",
+          "tmux option read/write with caching",
+          "Terminal priority sorting (7 terminal types)",
+          "Status priority sorting (working/idle)",
+          "Cache age calculation and TTL"
+        ]
+      }
+    },
+    {
+      "group_id": 4,
+      "group_name": "Refactoring Documentation",
+      "type": "docs",
+      "files": [
+        "stigmergy/results/refactor-mission/survey-structure.md",
+        "stigmergy/results/refactor-mission/survey-deps.md",
+        "stigmergy/results/refactor-mission/task-plan.md"
+      ],
+      "description": "Created comprehensive refactoring documentation: code structure survey (712 lines, 25KB), dependency analysis (450 lines, 16KB), execution plan (600 lines, 21KB). Documents architecture, data flows, cache layers, optimization strategies, and refactoring decisions",
+      "conventional_commit": "docs: リファクタリング調査ドキュメントを作成\n\n3つのドキュメント:\n- survey-structure.md: コード構造解析 (712行、アルゴリズム、最適化戦略)\n- survey-deps.md: 依存関係グラフと呼び出しチェーン (450行)\n- task-plan.md: 実行計画とモジュール分割設計 (600行)",
+      "priority": 4,
+      "impact": "Documents refactoring process and architecture decisions for future maintainers",
+      "backward_compatible": true,
+      "risk": "none",
+      "details": {
+        "total_docs": 3,
+        "total_lines": 1762,
+        "total_size": "62KB",
+        "content": [
+          "Architecture layers and function groupings",
+          "Dependency graph and call chains",
+          "Cache layers (4-tier architecture)",
+          "Data flow formats and contracts",
+          "Optimization strategies (batch processing, FAST_MODE)",
+          "Module extraction plan and rationale"
+        ]
+      }
+    }
+  ],
+
+  "commit_strategy": {
+    "recommended_approach": "4 sequential commits by logical grouping",
+    "rationale": "Separates bug fixes (highest priority), refactoring (core change), tests (safety), and docs (context). Allows easy rollback and clear git history.",
+    "commit_order": [
+      {
+        "order": 1,
+        "commit": "fix: P0バグ修正 - クロスプラットフォーム対応とデッドコード除去",
+        "reason": "Bug fixes should go first, independent of refactoring"
+      },
+      {
+        "order": 2,
+        "commit": "refactor: shared.shを6つのモジュールライブラリに分割",
+        "reason": "Core refactoring after bugs are fixed"
+      },
+      {
+        "order": 3,
+        "commit": "test: ゴールデンマスター回帰テストを追加",
+        "reason": "Tests validate the refactoring"
+      },
+      {
+        "order": 4,
+        "commit": "docs: リファクタリング調査ドキュメントを作成",
+        "reason": "Documentation provides context for the changes"
+      }
+    ]
+  },
+
+  "risk_assessment": {
+    "overall_risk": "low",
+    "risk_factors": [
+      {
+        "factor": "Backward Compatibility",
+        "status": "SAFE",
+        "details": "Facade pattern in shared.sh maintains all existing APIs"
+      },
+      {
+        "factor": "Test Coverage",
+        "status": "GOOD",
+        "details": "New golden master tests + existing 4 test suites"
+      },
+      {
+        "factor": "Module Dependencies",
+        "status": "SAFE",
+        "details": "All modules are pure extractions, no circular dependencies"
+      },
+      {
+        "factor": "Production Impact",
+        "status": "LOW",
+        "details": "All scripts source shared.sh which sources modules transparently"
+      }
+    ],
+    "rollback_strategy": "Revert commits in reverse order (4→3→2→1) if issues occur"
+  },
+
+  "metrics": {
+    "code_quality": {
+      "before": {
+        "monolith_lines": 1232,
+        "functions_in_monolith": 32,
+        "avg_function_complexity": "high",
+        "maintainability": "low"
+      },
+      "after": {
+        "facade_lines": 19,
+        "modules": 6,
+        "avg_module_size": 216,
+        "largest_module": "terminal.sh (518 lines)",
+        "smallest_module": "platform.sh (46 lines)",
+        "maintainability": "high",
+        "cohesion": "high"
+      },
+      "improvement": "68x smaller facade, clear module boundaries, single responsibility per module"
+    },
+    "testing": {
+      "test_suites_before": 4,
+      "test_suites_after": 5,
+      "new_test_cases": 20,
+      "regression_coverage": "Platform, tmux, terminal, cache APIs"
+    }
+  }
+}
