@@ -32,19 +32,27 @@ get_ai_pids() {
     local filter="${1:-}"
     local pids=""
 
-    if [ "$BATCH_INITIALIZED" = "1" ] && [ -f "$BATCH_PROCESS_TREE_FILE" ]; then
-        # バッチキャッシュから取得
+    if [ "$BATCH_INITIALIZED" = "1" ] && [ -f "$BATCH_PID_PANE_MAP_FILE" ]; then
+        # バッチキャッシュから取得（BATCH_PID_PANE_MAP_FILE を使用）
+        # フォーマット: pid<TAB>pane_id<TAB>process_type
         if [ -n "$filter" ]; then
-            pids=$(awk -v f="$filter" '$3 == f {print $1}' "$BATCH_PROCESS_TREE_FILE" | tr '\n' ' ')
+            pids=$(awk -F'\t' -v f="$filter" '$3 == f {print $1}' "$BATCH_PID_PANE_MAP_FILE" | tr '\n' ' ')
         else
-            pids=$(awk '$3 == "claude" || $3 == "codex" {print $1}' "$BATCH_PROCESS_TREE_FILE" | tr '\n' ' ')
+            pids=$(awk -F'\t' '$3 == "claude" || $3 == "codex" {print $1}' "$BATCH_PID_PANE_MAP_FILE" | tr '\n' ' ')
         fi
     else
-        # 通常モード: ps コマンドで取得
+        # 通常モード: get_process_type で判定
+        # Note: この分岐は BATCH_INITIALIZED=1 でない場合のフォールバック
         if [ -n "$filter" ]; then
-            pids=$(ps -eo pid,comm 2>/dev/null | awk -v f="$filter" '$2 == f {print $1}' | tr '\n' ' ')
+            pids=$(ps -eo pid,comm,args 2>/dev/null | while read -r pid comm args; do
+                ptype=$(get_process_type "$pid")
+                [ "$ptype" = "$filter" ] && echo "$pid"
+            done | tr '\n' ' ')
         else
-            pids=$(ps -eo pid,comm 2>/dev/null | awk '$2 == "claude" || $2 == "codex" {print $1}' | tr '\n' ' ')
+            pids=$(ps -eo pid,comm,args 2>/dev/null | while read -r pid comm args; do
+                ptype=$(get_process_type "$pid")
+                [ "$ptype" = "claude" ] || [ "$ptype" = "codex" ] && echo "$pid"
+            done | tr '\n' ' ')
         fi
     fi
 
@@ -72,8 +80,9 @@ get_process_type() {
 # キャッシュ版
 get_process_type_cached() {
     local pid="$1"
-    if [ "$BATCH_INITIALIZED" = "1" ] && [ -f "$BATCH_PROCESS_TREE_FILE" ]; then
-        awk -v pid="$pid" '$1 == pid { print $3 }' "$BATCH_PROCESS_TREE_FILE"
+    if [ "$BATCH_INITIALIZED" = "1" ] && [ -f "$BATCH_PID_PANE_MAP_FILE" ]; then
+        # BATCH_PID_PANE_MAP_FILE から process_type（3番目のフィールド）を取得
+        awk -F'\t' -v pid="$pid" '$1 == pid { print $3 }' "$BATCH_PID_PANE_MAP_FILE"
     else
         get_process_type "$pid"
     fi
