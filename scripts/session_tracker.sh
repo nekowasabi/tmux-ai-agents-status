@@ -61,7 +61,9 @@ get_process_type() {
 
     if [ "$comm" = "claude" ]; then
         echo "claude"
-    elif [ "$comm" = "node" ] && [[ "$args" =~ (^|[[:space:]]|/)codex([[:space:]]|$) ]]; then
+    # Codex 検出: commに依存せず args から /bin/codex を検索
+    # Note: ps -o comm= は 'MainThread' を返すため
+    elif [[ "$args" =~ /bin/codex([[:space:]]|$) ]]; then
         echo "codex"
     fi
 }

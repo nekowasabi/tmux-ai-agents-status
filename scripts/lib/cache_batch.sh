@@ -131,8 +131,9 @@ _build_pid_pane_map() {
             if (comm == "claude") {
                 ai_proc[pid] = "claude"
             }
-            # Node.js プロセスでコマンドラインに /codex を含む
-            else if (comm == "node" && args ~ /(^|[[:space:]]|\/)codex([[:space:]]|$)/) {
+            # Codex プロセスを検出（commに依存せず、args から /bin/codex を検索）
+            # Note: ps -eo comm は 'MainThread' を返すため、args で判定
+            else if (args ~ /\/bin\/codex([[:space:]]|$)/) {
                 ai_proc[pid] = "codex"
             }
         }
