@@ -1,4 +1,4 @@
-# tmux-claudecode-status
+# tmux-ai-agents-status
 
 tmuxのステータスバーにClaude Codeの実行状態をリアルタイム表示するプラグイン。複数のClaude Codeセッションを個別に追跡し、各セッションのworking/idle状態を色分けして表示します。
 
@@ -17,7 +17,7 @@ tmuxのステータスバーにClaude Codeの実行状態をリアルタイム�
 `~/.tmux.conf` に以下を追加：
 
 ```bash
-set -g @plugin 'takets/tmux-claudecode-status'
+set -g @plugin 'takets/tmux-ai-agents-status'
 ```
 
 その後、tmuxで `prefix + I` を実行（TPMプラグインリロード）。
@@ -26,12 +26,12 @@ set -g @plugin 'takets/tmux-claudecode-status'
 
 1. このリポジトリをクローン：
 ```bash
-git clone https://github.com/takets/tmux-claudecode-status ~/.tmux/plugins/tmux-claudecode-status
+git clone https://github.com/nekowasabi/tmux-ai-agents-status ~/.tmux/plugins/tmux-ai-agents-status
 ```
 
 2. `~/.tmux.conf` に以下を追加：
 ```bash
-run-shell "~/.tmux/plugins/tmux-claudecode-status/claudecode_status.tmux"
+run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
 ```
 
 3. tmuxを再起動。
@@ -145,10 +145,10 @@ set -g @claudecode_select_key "C-j"
 **使い方 - コマンドライン:**
 ```bash
 # fzfを使用した対話的選択
-~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh
+~/.tmux/plugins/tmux-ai-agents-status/scripts/select_claude.sh
 
 # リストモード - fzfなしですべてのプロセスを出力
-~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh --list
+~/.tmux/plugins/tmux-ai-agents-status/scripts/select_claude.sh --list
 ```
 
 **出力例:**
@@ -259,7 +259,7 @@ ls -la ~/.claude/debug/
 ## ファイル構成
 
 ```
-tmux-claudecode-status/
+tmux-ai-agents-status/
 ├── claudecode_status.tmux      # TPMエントリーポイント
 ├── scripts/
 │   ├── shared.sh               # 共通ユーティリティ

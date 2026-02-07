@@ -1,4 +1,4 @@
-# tmux-claudecode-status
+# tmux-ai-agents-status
 
 A tmux plugin that displays Claude Code's execution status in real-time on the status bar. It tracks multiple Claude Code sessions individually and shows each session's working/idle state with color coding.
 
@@ -17,7 +17,7 @@ A tmux plugin that displays Claude Code's execution status in real-time on the s
 Add the following to `~/.tmux.conf`:
 
 ```bash
-set -g @plugin 'takets/tmux-claudecode-status'
+set -g @plugin 'takets/tmux-ai-agents-status'
 ```
 
 Then run `prefix + I` in tmux to reload TPM plugins.
@@ -26,12 +26,12 @@ Then run `prefix + I` in tmux to reload TPM plugins.
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/takets/tmux-claudecode-status ~/.tmux/plugins/tmux-claudecode-status
+git clone https://github.com/nekowasabi/tmux-ai-agents-status ~/.tmux/plugins/tmux-ai-agents-status
 ```
 
 2. Add the following to `~/.tmux.conf`:
 ```bash
-run-shell "~/.tmux/plugins/tmux-claudecode-status/claudecode_status.tmux"
+run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
 ```
 
 3. Restart tmux.
@@ -151,10 +151,10 @@ set -g @claudecode_select_key "C-j"
 **Usage - Command Line:**
 ```bash
 # Interactive selection with fzf
-~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh
+~/.tmux/plugins/tmux-ai-agents-status/scripts/select_claude.sh
 
 # List mode - print all processes without fzf
-~/.tmux/plugins/tmux-claudecode-status/scripts/select_claude.sh --list
+~/.tmux/plugins/tmux-ai-agents-status/scripts/select_claude.sh --list
 ```
 
 **Example Output:**
@@ -265,7 +265,7 @@ Ensure all tests PASS.
 ## File Structure
 
 ```
-tmux-claudecode-status/
+tmux-ai-agents-status/
 ├── claudecode_status.tmux      # TPM entry point
 ├── scripts/
 │   ├── shared.sh               # Common utilities
