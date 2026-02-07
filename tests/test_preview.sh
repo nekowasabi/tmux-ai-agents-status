@@ -74,7 +74,7 @@ test_no_argument() {
     assert_contains "No selection" "$output" "No argument returns 'No selection'"
 }
 
-# Test: No CLAUDECODE_PANE_DATA returns appropriate message
+# Test: No AI_AGENT_PANE_DATA returns appropriate message
 test_no_pane_data() {
     local script="$PROJECT_ROOT/scripts/preview_pane.sh"
     if [ ! -x "$script" ]; then
@@ -84,9 +84,9 @@ test_no_pane_data() {
         return
     fi
     local output
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
     output=$("$script" "test line" 2>&1 || true)
-    assert_contains "Preview data not available" "$output" "No CLAUDECODE_PANE_DATA returns appropriate message"
+    assert_contains "Preview data not available" "$output" "No AI_AGENT_PANE_DATA returns appropriate message"
 }
 
 # Test: Invalid selection returns "Pane not found"
@@ -99,10 +99,10 @@ test_invalid_selection() {
         return
     fi
     local output
-    export CLAUDECODE_PANE_DATA=$'valid line\t%123'
+    export AI_AGENT_PANE_DATA=$'valid line\t%123'
     output=$("$script" "invalid line" 2>&1 || true)
     assert_contains "Pane not found" "$output" "Invalid selection returns 'Pane not found'"
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
 }
 
 # Test: PANE_DATA_FILE format is correct (tab-separated)
@@ -134,11 +134,11 @@ test_default_preview_option() {
     source "$PROJECT_ROOT/scripts/shared.sh"
     local value
     # When tmux option is not set, should return default value
-    value=$(get_tmux_option "@claudecode_fzf_preview_test_nonexistent" "on")
-    assert_equals "on" "$value" "Default @claudecode_fzf_preview returns 'on'"
+    value=$(get_tmux_option "@ai_agent_fzf_preview_test_nonexistent" "on")
+    assert_equals "on" "$value" "Default @ai_agent_fzf_preview returns 'on'"
 }
 
-# Test: Valid selection with CLAUDECODE_PANE_DATA finds pane_id
+# Test: Valid selection with AI_AGENT_PANE_DATA finds pane_id
 test_valid_selection_finds_pane() {
     local script="$PROJECT_ROOT/scripts/preview_pane.sh"
     if [ ! -x "$script" ]; then
@@ -152,7 +152,7 @@ test_valid_selection_finds_pane() {
     # But we can at least test that it doesn't return "Pane not found"
     local output
     local test_line="  #0 project [session] working"
-    export CLAUDECODE_PANE_DATA="${test_line}"$'\t'"%0"
+    export AI_AGENT_PANE_DATA="${test_line}"$'\t'"%0"
     output=$("$script" "$test_line" 2>&1 || true)
 
     # Should NOT contain "Pane not found" if the line matches
@@ -165,10 +165,10 @@ test_valid_selection_finds_pane() {
         echo "  Output: '$output'"
         ((TESTS_FAILED++))
     fi
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
 }
 
-# Test: Multiple entries in CLAUDECODE_PANE_DATA
+# Test: Multiple entries in AI_AGENT_PANE_DATA
 test_multiple_pane_entries() {
     local script="$PROJECT_ROOT/scripts/preview_pane.sh"
     if [ ! -x "$script" ]; then
@@ -184,7 +184,7 @@ test_multiple_pane_entries() {
     local line3="  #2 project3 [session3] working"
 
     # Create multi-line PANE_DATA
-    export CLAUDECODE_PANE_DATA="${line1}"$'\t'"%10"$'\n'"${line2}"$'\t'"%20"$'\n'"${line3}"$'\t'"%30"
+    export AI_AGENT_PANE_DATA="${line1}"$'\t'"%10"$'\n'"${line2}"$'\t'"%20"$'\n'"${line3}"$'\t'"%30"
 
     # Test finding second entry
     output=$("$script" "$line2" 2>&1 || true)
@@ -199,7 +199,7 @@ test_multiple_pane_entries() {
         ((TESTS_FAILED++))
     fi
 
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
 }
 
 # Test: Preview script handles special characters in line
@@ -215,7 +215,7 @@ test_special_characters_in_line() {
     local output
     # Line with emoji and special characters
     local test_line="  🍎 #0 my-project [test-session] working"
-    export CLAUDECODE_PANE_DATA="${test_line}"$'\t'"%99"
+    export AI_AGENT_PANE_DATA="${test_line}"$'\t'"%99"
     output=$("$script" "$test_line" 2>&1 || true)
 
     ((TESTS_RUN++))
@@ -228,7 +228,7 @@ test_special_characters_in_line() {
         ((TESTS_FAILED++))
     fi
 
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
 }
 
 # Test: select_claude_launcher.sh exists and is executable

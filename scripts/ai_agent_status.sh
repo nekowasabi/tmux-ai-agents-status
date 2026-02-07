@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claudecode_status.sh - Claude Code status information for tmux
+# ai_agent_status.sh - Claude Code status information for tmux
 # Outputs formatted status for display in tmux statusline
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -21,7 +21,7 @@ DEFAULT_WORKING_THRESHOLD=30       # 作業中と判定する時間閾値（秒�
 
 # Cache configuration
 CACHE_DIR="/tmp"
-CACHE_FILE="$CACHE_DIR/claudecode_status_cache_$$"
+CACHE_FILE="$CACHE_DIR/ai_agent_status_cache_$$"
 CACHE_TTL=2
 
 # Clean up cache on exit
@@ -68,25 +68,25 @@ main() {
     local show_terminal show_pane
     local left_sep right_sep
     local working_threshold
-    working_dot=$(get_tmux_option "@claudecode_working_dot" "$DEFAULT_WORKING_DOT")
-    idle_dot=$(get_tmux_option "@claudecode_idle_dot" "$DEFAULT_IDLE_DOT")
-    working_color=$(get_tmux_option "@claudecode_working_color" "$DEFAULT_WORKING_COLOR")
-    idle_color=$(get_tmux_option "@claudecode_idle_color" "$DEFAULT_IDLE_COLOR")
-    separator=$(get_tmux_option "@claudecode_separator" "$DEFAULT_SEPARATOR")
-    left_sep=$(get_tmux_option "@claudecode_left_sep" "$DEFAULT_LEFT_SEP")
-    right_sep=$(get_tmux_option "@claudecode_right_sep" "$DEFAULT_RIGHT_SEP")
+    working_dot=$(get_tmux_option "@ai_agent_working_dot" "$DEFAULT_WORKING_DOT")
+    idle_dot=$(get_tmux_option "@ai_agent_idle_dot" "$DEFAULT_IDLE_DOT")
+    working_color=$(get_tmux_option "@ai_agent_working_color" "$DEFAULT_WORKING_COLOR")
+    idle_color=$(get_tmux_option "@ai_agent_idle_color" "$DEFAULT_IDLE_COLOR")
+    separator=$(get_tmux_option "@ai_agent_separator" "$DEFAULT_SEPARATOR")
+    left_sep=$(get_tmux_option "@ai_agent_left_sep" "$DEFAULT_LEFT_SEP")
+    right_sep=$(get_tmux_option "@ai_agent_right_sep" "$DEFAULT_RIGHT_SEP")
     # 新オプション: ターミナル絵文字とペイン番号の表示制御
-    show_terminal=$(get_tmux_option "@claudecode_show_terminal" "on")
-    show_pane=$(get_tmux_option "@claudecode_show_pane" "on")
-    working_threshold=$(get_tmux_option "@claudecode_working_threshold" "$DEFAULT_WORKING_THRESHOLD")
+    show_terminal=$(get_tmux_option "@ai_agent_show_terminal" "on")
+    show_pane=$(get_tmux_option "@ai_agent_show_pane" "on")
+    working_threshold=$(get_tmux_option "@ai_agent_working_threshold" "$DEFAULT_WORKING_THRESHOLD")
 
     # Phase 4: Codex display options
-    show_codex=$(get_tmux_option "@claudecode_show_codex" "on")
-    codex_icon=$(get_tmux_option "@claudecode_codex_icon" "🦾")
-    claude_icon=$(get_tmux_option "@claudecode_claude_icon" "")
+    show_codex=$(get_tmux_option "@ai_agent_show_codex" "on")
+    codex_icon=$(get_tmux_option "@ai_agent_codex_icon" "🦾")
+    claude_icon=$(get_tmux_option "@ai_agent_claude_icon" "")
 
     # Export working threshold for session_tracker.sh
-    export CLAUDECODE_WORKING_THRESHOLD="$working_threshold"
+    export AI_AGENT_WORKING_THRESHOLD="$working_threshold"
 
     # Phase 4: Export show_codex for session_tracker.sh
     export SHOW_CODEX="$show_codex"

@@ -14,7 +14,7 @@
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/shared.sh"
 
-# 共有キャッシュを確認（claudecode_status.shが生成したもの）
+# 共有キャッシュを確認（ai_agent_status.shが生成したもの）
 # 新鮮なキャッシュがあればバッチ初期化をスキップして高速化
 # 最適化版: 1回のファイル読み込みで全フィールドを取得
 SHARED_CACHE_DATA=""
@@ -35,7 +35,7 @@ fi
 FAST_MODE=1
 
 # working判定の閾値（秒）- TTY mtimeがこの秒数以内ならworking
-WORKING_THRESHOLD="${CLAUDECODE_WORKING_THRESHOLD:-5}"
+WORKING_THRESHOLD="${AI_AGENT_WORKING_THRESHOLD:-5}"
 
 # Note: WSL check removed for macOS optimization
 
@@ -62,39 +62,39 @@ generate_process_list() {
         # 共有キャッシュからオプションを取得（最速）
         IFS=$'\t' read -r working_dot idle_dot terminal_iterm terminal_wezterm terminal_ghostty terminal_windows terminal_vscode terminal_alacritty terminal_unknown <<< "$SHARED_CACHE_OPTIONS"
         # Phase 5: codex options (fallback to tmux)
-        show_codex=$(get_tmux_option "@claudecode_show_codex" "on")
-        codex_icon=$(get_tmux_option "@claudecode_codex_icon" "🦾")
-        claude_icon=$(get_tmux_option "@claudecode_claude_icon" "")
+        show_codex=$(get_tmux_option "@ai_agent_show_codex" "on")
+        codex_icon=$(get_tmux_option "@ai_agent_codex_icon" "🦾")
+        claude_icon=$(get_tmux_option "@ai_agent_claude_icon" "")
     elif [ -n "$BATCH_TMUX_OPTIONS_FILE" ] && [ -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
         eval "$(awk '
-        /@claudecode_working_dot/ {gsub(/@claudecode_working_dot /,""); print "working_dot='\''"$0"'\''"}
-        /@claudecode_idle_dot/ {gsub(/@claudecode_idle_dot /,""); print "idle_dot='\''"$0"'\''"}
-        /@claudecode_terminal_iterm/ {gsub(/@claudecode_terminal_iterm /,""); print "terminal_iterm='\''"$0"'\''"}
-        /@claudecode_terminal_wezterm/ {gsub(/@claudecode_terminal_wezterm /,""); print "terminal_wezterm='\''"$0"'\''"}
-        /@claudecode_terminal_ghostty/ {gsub(/@claudecode_terminal_ghostty /,""); print "terminal_ghostty='\''"$0"'\''"}
-        /@claudecode_terminal_windows/ {gsub(/@claudecode_terminal_windows /,""); print "terminal_windows='\''"$0"'\''"}
-        /@claudecode_terminal_vscode/ {gsub(/@claudecode_terminal_vscode /,""); print "terminal_vscode='\''"$0"'\''"}
-        /@claudecode_terminal_alacritty/ {gsub(/@claudecode_terminal_alacritty /,""); print "terminal_alacritty='\''"$0"'\''"}
-        /@claudecode_terminal_unknown/ {gsub(/@claudecode_terminal_unknown /,""); print "terminal_unknown='\''"$0"'\''"}
-        /@claudecode_show_codex/ {gsub(/@claudecode_show_codex /,""); print "show_codex='\''"$0"'\''"}
-        /@claudecode_codex_icon/ {gsub(/@claudecode_codex_icon /,""); print "codex_icon='\''"$0"'\''"}
-        /@claudecode_claude_icon/ {gsub(/@claudecode_claude_icon /,""); print "claude_icon='\''"$0"'\''"}
+        /@ai_agent_working_dot/ {gsub(/@ai_agent_working_dot /,""); print "working_dot='\''"$0"'\''"}
+        /@ai_agent_idle_dot/ {gsub(/@ai_agent_idle_dot /,""); print "idle_dot='\''"$0"'\''"}
+        /@ai_agent_terminal_iterm/ {gsub(/@ai_agent_terminal_iterm /,""); print "terminal_iterm='\''"$0"'\''"}
+        /@ai_agent_terminal_wezterm/ {gsub(/@ai_agent_terminal_wezterm /,""); print "terminal_wezterm='\''"$0"'\''"}
+        /@ai_agent_terminal_ghostty/ {gsub(/@ai_agent_terminal_ghostty /,""); print "terminal_ghostty='\''"$0"'\''"}
+        /@ai_agent_terminal_windows/ {gsub(/@ai_agent_terminal_windows /,""); print "terminal_windows='\''"$0"'\''"}
+        /@ai_agent_terminal_vscode/ {gsub(/@ai_agent_terminal_vscode /,""); print "terminal_vscode='\''"$0"'\''"}
+        /@ai_agent_terminal_alacritty/ {gsub(/@ai_agent_terminal_alacritty /,""); print "terminal_alacritty='\''"$0"'\''"}
+        /@ai_agent_terminal_unknown/ {gsub(/@ai_agent_terminal_unknown /,""); print "terminal_unknown='\''"$0"'\''"}
+        /@ai_agent_show_codex/ {gsub(/@ai_agent_show_codex /,""); print "show_codex='\''"$0"'\''"}
+        /@ai_agent_codex_icon/ {gsub(/@ai_agent_codex_icon /,""); print "codex_icon='\''"$0"'\''"}
+        /@ai_agent_claude_icon/ {gsub(/@ai_agent_claude_icon /,""); print "claude_icon='\''"$0"'\''"}
         ' "$BATCH_TMUX_OPTIONS_FILE")"
     else
         # フォールバック: tmuxから直接取得
-        working_dot=$(get_tmux_option "@claudecode_working_dot" "🤖")
-        idle_dot=$(get_tmux_option "@claudecode_idle_dot" "🔔")
-        terminal_iterm=$(get_tmux_option "@claudecode_terminal_iterm" "🍎")
-        terminal_wezterm=$(get_tmux_option "@claudecode_terminal_wezterm" "⚡")
-        terminal_ghostty=$(get_tmux_option "@claudecode_terminal_ghostty" "👻")
-        terminal_windows=$(get_tmux_option "@claudecode_terminal_windows" "🪟")
-        terminal_vscode=$(get_tmux_option "@claudecode_terminal_vscode" "📝")
-        terminal_alacritty=$(get_tmux_option "@claudecode_terminal_alacritty" "🔲")
-        terminal_unknown=$(get_tmux_option "@claudecode_terminal_unknown" "❓")
+        working_dot=$(get_tmux_option "@ai_agent_working_dot" "🤖")
+        idle_dot=$(get_tmux_option "@ai_agent_idle_dot" "🔔")
+        terminal_iterm=$(get_tmux_option "@ai_agent_terminal_iterm" "🍎")
+        terminal_wezterm=$(get_tmux_option "@ai_agent_terminal_wezterm" "⚡")
+        terminal_ghostty=$(get_tmux_option "@ai_agent_terminal_ghostty" "👻")
+        terminal_windows=$(get_tmux_option "@ai_agent_terminal_windows" "🪟")
+        terminal_vscode=$(get_tmux_option "@ai_agent_terminal_vscode" "📝")
+        terminal_alacritty=$(get_tmux_option "@ai_agent_terminal_alacritty" "🔲")
+        terminal_unknown=$(get_tmux_option "@ai_agent_terminal_unknown" "❓")
         # Phase 5: codex options
-        show_codex=$(get_tmux_option "@claudecode_show_codex" "on")
-        codex_icon=$(get_tmux_option "@claudecode_codex_icon" "🦾")
-        claude_icon=$(get_tmux_option "@claudecode_claude_icon" "")
+        show_codex=$(get_tmux_option "@ai_agent_show_codex" "on")
+        codex_icon=$(get_tmux_option "@ai_agent_codex_icon" "🦾")
+        claude_icon=$(get_tmux_option "@ai_agent_claude_icon" "")
     fi
     : "${working_dot:=🤖}" "${idle_dot:=🔔}"
     : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_windows:=🪟}" "${terminal_vscode:=📝}" "${terminal_alacritty:=🔲}" "${terminal_unknown:=❓}"
@@ -272,18 +272,18 @@ run_fzf_selection() {
     local fzf_opts
     # Note: --border removed because tmux popup already provides a border
     # --no-clear prevents screen flicker on startup
-    fzf_opts=$(get_tmux_option_cached "@claudecode_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\ Claude:\ ")
+    fzf_opts=$(get_tmux_option_cached "@ai_agent_fzf_opts" "--height=100% --reverse --no-clear --prompt=Select\ Claude:\ ")
 
     # Get preview setting
     local preview_enabled
-    preview_enabled=$(get_tmux_option_cached "@claudecode_fzf_preview" "on")
+    preview_enabled=$(get_tmux_option_cached "@ai_agent_fzf_preview" "on")
 
     # Build preview option if enabled
     local preview_opt=""
     if [ "$preview_enabled" = "on" ]; then
         local preview_script="$CURRENT_DIR/preview_pane.sh"
         if [ -x "$preview_script" ]; then
-            # Build CLAUDECODE_PANE_DATA for preview
+            # Build AI_AGENT_PANE_DATA for preview
             local pane_data=""
             for i in "${!display_lines[@]}"; do
                 if [ -n "$pane_data" ]; then
@@ -291,11 +291,11 @@ run_fzf_selection() {
                 fi
                 pane_data+="${display_lines[$i]}"$'\t'"${pane_ids[$i]}"
             done
-            export CLAUDECODE_PANE_DATA="$pane_data"
+            export AI_AGENT_PANE_DATA="$pane_data"
             local preview_position
-            preview_position=$(get_tmux_option "@claudecode_fzf_preview_position" "down")
+            preview_position=$(get_tmux_option "@ai_agent_fzf_preview_position" "down")
             local preview_size
-            preview_size=$(get_tmux_option "@claudecode_fzf_preview_size" "50%")
+            preview_size=$(get_tmux_option "@ai_agent_fzf_preview_size" "50%")
             preview_opt="--preview='$preview_script {}' --preview-window=${preview_position}:${preview_size}:wrap"
         fi
     fi
@@ -306,7 +306,7 @@ run_fzf_selection() {
     selected=$(echo "$fzf_input" | eval "fzf $fzf_opts $preview_opt")
 
     # Cleanup
-    unset CLAUDECODE_PANE_DATA
+    unset AI_AGENT_PANE_DATA
 
     if [ -z "$selected" ]; then
         return 1

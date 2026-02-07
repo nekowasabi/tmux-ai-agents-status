@@ -140,20 +140,20 @@ test_check_process_status_nonexistent_pid() {
 }
 
 test_working_threshold_env_var() {
-    echo -e "${YELLOW}--- Test: CLAUDECODE_WORKING_THRESHOLD environment variable ---${NC}"
+    echo -e "${YELLOW}--- Test: AI_AGENT_WORKING_THRESHOLD environment variable ---${NC}"
     source "$PROJECT_ROOT/scripts/shared.sh"
     source "$PROJECT_ROOT/scripts/session_tracker.sh"
 
     # Check that the variable can be set
     local original_threshold="$WORKING_THRESHOLD"
-    CLAUDECODE_WORKING_THRESHOLD=10
+    AI_AGENT_WORKING_THRESHOLD=10
 
     # Source again to pick up the environment variable
     source "$PROJECT_ROOT/scripts/session_tracker.sh"
 
-    if [ "${WORKING_THRESHOLD:-}" != "10" ] && [ "${CLAUDECODE_WORKING_THRESHOLD:-}" = "10" ]; then
+    if [ "${WORKING_THRESHOLD:-}" != "10" ] && [ "${AI_AGENT_WORKING_THRESHOLD:-}" = "10" ]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: CLAUDECODE_WORKING_THRESHOLD can be set"
+        echo -e "${GREEN}PASS${NC}: AI_AGENT_WORKING_THRESHOLD can be set"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))

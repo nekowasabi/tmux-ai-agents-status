@@ -3,8 +3,8 @@
 # This prevents the empty window flicker by preparing data before popup appears
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-TEMP_DATA="/tmp/claudecode_fzf_$$"
-RESULT_FILE="/tmp/claudecode_result_$$"
+TEMP_DATA="/tmp/ai_agent_fzf_$$"
+RESULT_FILE="/tmp/ai_agent_result_$$"
 ORIGINAL_PANE=$(tmux display-message -p '#{pane_id}')
 
 # Step 1: Get process list using internal format (runs OUTSIDE popup)
@@ -22,11 +22,11 @@ if [ -z "$process_data" ]; then
 fi
 
 # Get working/idle status icons from tmux options
-working_dot=$(get_tmux_option "@claudecode_working_dot" "🤖")
-idle_dot=$(get_tmux_option "@claudecode_idle_dot" "🔔")
+working_dot=$(get_tmux_option "@ai_agent_working_dot" "🤖")
+idle_dot=$(get_tmux_option "@ai_agent_idle_dot" "🔔")
 
 # Get working threshold
-working_threshold=$(get_tmux_option "@claudecode_working_threshold" "5")
+working_threshold=$(get_tmux_option "@ai_agent_working_threshold" "5")
 
 # Get current time once
 current_time="${EPOCHSECONDS:-$(date +%s)}"
@@ -80,18 +80,18 @@ if [ ! -s "$TEMP_DATA" ]; then
 fi
 
 # Get preview setting
-PREVIEW_ENABLED=$(get_tmux_option "@claudecode_fzf_preview" "on")
+PREVIEW_ENABLED=$(get_tmux_option "@ai_agent_fzf_preview" "on")
 PREVIEW_SCRIPT="$CURRENT_DIR/preview_pane.sh"
 
-# Build CLAUDECODE_PANE_DATA for preview script
+# Build AI_AGENT_PANE_DATA for preview script
 # Format: "display_line\tpane_id\n" for each entry
 PANE_DATA_FILE="${TEMP_DATA}_pane_data"
 paste "$TEMP_DATA" "${TEMP_DATA}_panes" > "$PANE_DATA_FILE"
 
 # Read preview position and size from tmux options
-PREVIEW_POSITION=$(tmux show-option -gqv "@claudecode_fzf_preview_position" 2>/dev/null)
+PREVIEW_POSITION=$(tmux show-option -gqv "@ai_agent_fzf_preview_position" 2>/dev/null)
 PREVIEW_POSITION="${PREVIEW_POSITION:-down}"
-PREVIEW_SIZE=$(tmux show-option -gqv "@claudecode_fzf_preview_size" 2>/dev/null)
+PREVIEW_SIZE=$(tmux show-option -gqv "@ai_agent_fzf_preview_size" 2>/dev/null)
 PREVIEW_SIZE="${PREVIEW_SIZE:-50%}"
 
 # Build preview option
@@ -100,7 +100,7 @@ if [ "$PREVIEW_ENABLED" = "on" ] && [ -x "$PREVIEW_SCRIPT" ]; then
     # Escape paths for shell embedding
     ESCAPED_SCRIPT=$(printf '%q' "$PREVIEW_SCRIPT")
     ESCAPED_PANE_DATA=$(printf '%q' "$PANE_DATA_FILE")
-    PREVIEW_OPT="--preview='CLAUDECODE_PANE_DATA=\$(cat $ESCAPED_PANE_DATA) $ESCAPED_SCRIPT {}' --preview-window=${PREVIEW_POSITION}:${PREVIEW_SIZE}:wrap"
+    PREVIEW_OPT="--preview='AI_AGENT_PANE_DATA=\$(cat $ESCAPED_PANE_DATA) $ESCAPED_SCRIPT {}' --preview-window=${PREVIEW_POSITION}:${PREVIEW_SIZE}:wrap"
 fi
 
 # Step 2: Launch popup with pre-prepared data (instant display!)

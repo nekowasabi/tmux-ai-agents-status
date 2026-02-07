@@ -9,14 +9,14 @@ source "$CURRENT_DIR/shared.sh"
 # この秒数以内にファイルが更新されていればworking
 # tmux-monitorを参考に30秒に設定（Claude Codeは応答生成中でも
 # .jsonlファイルの更新が不定期のため、短い閾値では誤判定する）
-WORKING_THRESHOLD="${CLAUDECODE_WORKING_THRESHOLD:-30}"
+WORKING_THRESHOLD="${AI_AGENT_WORKING_THRESHOLD:-30}"
 
 # CPU使用率の閾値（%）- この値以上ならworking
 # Claude Codeはバックグラウンドでも一定のCPU使用率があるため、高めに設定
-CPU_THRESHOLD="${CLAUDECODE_CPU_THRESHOLD:-20}"
+CPU_THRESHOLD="${AI_AGENT_CPU_THRESHOLD:-20}"
 
 # ペインコンテンツハッシュのキャッシュディレクトリ
-CACHE_DIR="/tmp/claudecode_status_cache"
+CACHE_DIR="/tmp/ai_agent_status_cache"
 
 # Claude Codeプロセスの PID 一覧を取得
 # 戻り値: スペース区切りのPID一覧

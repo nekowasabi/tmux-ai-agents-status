@@ -31,7 +31,7 @@ git clone https://github.com/nekowasabi/tmux-ai-agents-status ~/.tmux/plugins/tm
 
 2. `~/.tmux.conf` に以下を追加：
 ```bash
-run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
+run-shell "~/.tmux/plugins/tmux-ai-agents-status/ai_agent_status.tmux"
 ```
 
 3. tmuxを再起動。
@@ -40,7 +40,7 @@ run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
 
 ### デフォルト表示
 
-デフォルトではステータスバーに `#{claudecode_status}` フォーマット文字列を設定する必要があります。
+デフォルトではステータスバーに `#{ai_agent_status}` フォーマット文字列を設定する必要があります。
 
 #### ステータスバーの表示位置設定
 
@@ -48,64 +48,64 @@ run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
 
 ```bash
 # status-right に表示
-set -g status-right "#{claudecode_status} #[default]%H:%M"
+set -g status-right "#{ai_agent_status} #[default]%H:%M"
 
 # status-left に表示
-set -g status-left "#{claudecode_status} #[default]"
+set -g status-left "#{ai_agent_status} #[default]"
 
 # status-format[1]（上部ステータスバー）に表示
 set -g status 2
-set -g status-format[1] "#{claudecode_status}"
+set -g status-format[1] "#{ai_agent_status}"
 ```
 
 ### カスタマイズオプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| `@claudecode_working_dot` | `🤖` | working状態のドット（ロボット絵文字） |
-| `@claudecode_idle_dot` | `🔔` | idle状態のドット（ベル絵文字） |
-| `@claudecode_working_color` | `""` (空) | working状態の色（空=tmuxデフォルト） |
-| `@claudecode_idle_color` | `""` (空) | idle状態の色（空=tmuxデフォルト） |
-| `@claudecode_separator` | `" "` | セッション間のセパレータ |
-| `@claudecode_left_sep` | `""` (空) | 左囲み文字 |
-| `@claudecode_right_sep` | `""` (空) | 右囲み文字 |
-| `@claudecode_show_terminal` | `on` | ターミナル絵文字の表示 |
-| `@claudecode_show_pane` | `on` | ペイン番号の表示 |
-| `@claudecode_terminal_iterm` | `🍎` | iTerm/Terminalの絵文字 |
-| `@claudecode_terminal_wezterm` | `⚡` | WezTermの絵文字 |
-| `@claudecode_terminal_ghostty` | `👻` | Ghosttyの絵文字 |
-| `@claudecode_terminal_windows` | `🪟` | Windows Terminalの絵文字 |
-| `@claudecode_terminal_unknown` | `❓` | 不明なターミナルの絵文字 |
-| `@claudecode_working_threshold` | `30` | working/idle判定の閾値（秒） |
-| `@claudecode_select_key` | `""` (空) | プロセス選択機能を開くキーバインド（例: `C-g`） |
-| `@claudecode_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | プロセス選択機能用のfzfオプション |
-| `@claudecode_fzf_preview` | `on` | fzfプレビューの有効/無効 (`on`/`off`) |
-| `@claudecode_fzf_preview_lines` | `30` | プレビューに表示する行数 |
+| `@ai_agent_working_dot` | `🤖` | working状態のドット（ロボット絵文字） |
+| `@ai_agent_idle_dot` | `🔔` | idle状態のドット（ベル絵文字） |
+| `@ai_agent_working_color` | `""` (空) | working状態の色（空=tmuxデフォルト） |
+| `@ai_agent_idle_color` | `""` (空) | idle状態の色（空=tmuxデフォルト） |
+| `@ai_agent_separator` | `" "` | セッション間のセパレータ |
+| `@ai_agent_left_sep` | `""` (空) | 左囲み文字 |
+| `@ai_agent_right_sep` | `""` (空) | 右囲み文字 |
+| `@ai_agent_show_terminal` | `on` | ターミナル絵文字の表示 |
+| `@ai_agent_show_pane` | `on` | ペイン番号の表示 |
+| `@ai_agent_terminal_iterm` | `🍎` | iTerm/Terminalの絵文字 |
+| `@ai_agent_terminal_wezterm` | `⚡` | WezTermの絵文字 |
+| `@ai_agent_terminal_ghostty` | `👻` | Ghosttyの絵文字 |
+| `@ai_agent_terminal_windows` | `🪟` | Windows Terminalの絵文字 |
+| `@ai_agent_terminal_unknown` | `❓` | 不明なターミナルの絵文字 |
+| `@ai_agent_working_threshold` | `30` | working/idle判定の閾値（秒） |
+| `@ai_agent_select_key` | `""` (空) | プロセス選択機能を開くキーバインド（例: `C-g`） |
+| `@ai_agent_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | プロセス選択機能用のfzfオプション |
+| `@ai_agent_fzf_preview` | `on` | fzfプレビューの有効/無効 (`on`/`off`) |
+| `@ai_agent_fzf_preview_lines` | `30` | プレビューに表示する行数 |
 
 ### カスタマイズ例
 
 ```bash
 # 囲み文字を追加
-set -g @claudecode_left_sep "["
-set -g @claudecode_right_sep "]"
+set -g @ai_agent_left_sep "["
+set -g @ai_agent_right_sep "]"
 # 結果: [🍎#0 project-name 🤖]
 
 # ターミナル絵文字をカスタマイズ
-set -g @claudecode_terminal_iterm "🖥️"
-set -g @claudecode_terminal_wezterm "W"
+set -g @ai_agent_terminal_iterm "🖥️"
+set -g @ai_agent_terminal_wezterm "W"
 
 # working/idle判定の閾値を変更（デフォルト: 30秒）
-set -g @claudecode_working_threshold "10"
+set -g @ai_agent_working_threshold "10"
 
 # プロセス選択機能を有効化（requires fzf）
-set -g @claudecode_select_key "C-j"  # prefix + Ctrl-j to open selector
+set -g @ai_agent_select_key "C-j"  # prefix + Ctrl-j to open selector
 
 # プロセス選択機能用のfzfオプションをカスタマイズ
-set -g @claudecode_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
+set -g @ai_agent_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
 
 # 色をカスタマイズ（任意）
-set -g @claudecode_working_color "#f97316"
-set -g @claudecode_idle_color "#22c55e"
+set -g @ai_agent_working_color "#f97316"
+set -g @ai_agent_idle_color "#22c55e"
 ```
 
 ### 色設定について
@@ -131,7 +131,7 @@ set -g @claudecode_idle_color "#22c55e"
 **セットアップ:**
 ```bash
 # キーバインドでプロセス選択機能を有効化
-set -g @claudecode_select_key "C-j"
+set -g @ai_agent_select_key "C-j"
 ```
 
 **使い方 - キーバインドモード:**
@@ -161,14 +161,14 @@ set -g @claudecode_select_key "C-j"
 **詳細設定:**
 ```bash
 # キーバインドをカスタマイズ
-set -g @claudecode_select_key "C-g"
+set -g @ai_agent_select_key "C-g"
 
 # fzfの表示をカスタマイズ
-set -g @claudecode_fzf_opts "--height=50% --reverse --border --prompt='🤖 Select: '"
+set -g @ai_agent_fzf_opts "--height=50% --reverse --border --prompt='🤖 Select: '"
 
 # カスタムカラーを使用
-set -g @claudecode_working_color "#f97316"
-set -g @claudecode_idle_color "#22c55e"
+set -g @ai_agent_working_color "#f97316"
+set -g @ai_agent_idle_color "#22c55e"
 ```
 
 **動作原理:**
@@ -195,7 +195,7 @@ set -g @claudecode_idle_color "#22c55e"
 デフォルトの閾値（5秒）は環境変数で変更可能：
 
 ```bash
-export CLAUDECODE_WORKING_THRESHOLD=10  # 10秒に変更
+export AI_AGENT_WORKING_THRESHOLD=10  # 10秒に変更
 ```
 
 ### キャッシュ機能
@@ -231,7 +231,7 @@ tmux show-option -g status-right
 
 1. キャッシュファイルを削除：
 ```bash
-rm -f /tmp/claudecode_status_cache_*
+rm -f /tmp/ai_agent_status_cache_*
 ```
 
 2. debugファイルが存在するか確認：
@@ -260,11 +260,11 @@ ls -la ~/.claude/debug/
 
 ```
 tmux-ai-agents-status/
-├── claudecode_status.tmux      # TPMエントリーポイント
+├── ai_agent_status.tmux       # TPMエントリーポイント
 ├── scripts/
 │   ├── shared.sh               # 共通ユーティリティ
 │   ├── session_tracker.sh       # セッション追跡ロジック
-│   ├── claudecode_status.sh     # メイン出力スクリプト
+│   ├── ai_agent_status.sh      # メイン出力スクリプト
 │   ├── select_claude.sh         # プロセス選択UI（fzf）
 │   └── focus_session.sh         # ターミナルフォーカス & ペイン切り替え
 ├── tests/

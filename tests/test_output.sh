@@ -98,50 +98,50 @@ teardown() {
 # Test Cases
 # =============================================================================
 
-test_claudecode_status_executable() {
-    echo -e "${YELLOW}--- Test: claudecode_status.sh is executable ---${NC}"
-    if [ -x "$PROJECT_ROOT/scripts/claudecode_status.sh" ]; then
+test_ai_agent_status_executable() {
+    echo -e "${YELLOW}--- Test: ai_agent_status.sh is executable ---${NC}"
+    if [ -x "$PROJECT_ROOT/scripts/ai_agent_status.sh" ]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.sh is executable"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.sh is executable"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.sh is not executable"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.sh is not executable"
         ((TESTS_FAILED++))
     fi
 }
 
-test_claudecode_status_output_format() {
-    echo -e "${YELLOW}--- Test: claudecode_status.sh output contains tmux format codes ---${NC}"
+test_ai_agent_status_output_format() {
+    echo -e "${YELLOW}--- Test: ai_agent_status.sh output contains tmux format codes ---${NC}"
     source "$PROJECT_ROOT/scripts/shared.sh"
     source "$PROJECT_ROOT/scripts/session_tracker.sh"
 
     local output
-    output=$("$PROJECT_ROOT/scripts/claudecode_status.sh")
+    output=$("$PROJECT_ROOT/scripts/ai_agent_status.sh")
 
     # Should contain tmux color format codes or be empty (no sessions)
     if [ -z "$output" ]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.sh returns empty when no sessions"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.sh returns empty when no sessions"
         ((TESTS_PASSED++))
     elif [[ "$output" == *"#[fg="* ]]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.sh returns tmux format output"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.sh returns tmux format output"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.sh output format invalid: '$output'"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.sh output format invalid: '$output'"
         ((TESTS_FAILED++))
     fi
 }
 
-test_claudecode_status_contains_dots() {
-    echo -e "${YELLOW}--- Test: claudecode_status.sh output contains status dots ---${NC}"
+test_ai_agent_status_contains_dots() {
+    echo -e "${YELLOW}--- Test: ai_agent_status.sh output contains status dots ---${NC}"
     source "$PROJECT_ROOT/scripts/shared.sh"
     source "$PROJECT_ROOT/scripts/session_tracker.sh"
 
     local output
-    output=$("$PROJECT_ROOT/scripts/claudecode_status.sh")
+    output=$("$PROJECT_ROOT/scripts/ai_agent_status.sh")
 
     # Should contain dots if sessions exist
     if [ -z "$output" ]; then
@@ -150,7 +150,7 @@ test_claudecode_status_contains_dots() {
         ((TESTS_PASSED++))
     elif [[ "$output" == *"●"* ]] || [[ "$output" == *"○"* ]]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.sh output contains status dots"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.sh output contains status dots"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
@@ -160,40 +160,40 @@ test_claudecode_status_contains_dots() {
 }
 
 test_tmux_plugin_executable() {
-    echo -e "${YELLOW}--- Test: claudecode_status.tmux is executable ---${NC}"
-    if [ -x "$PROJECT_ROOT/claudecode_status.tmux" ]; then
+    echo -e "${YELLOW}--- Test: ai_agent_status.tmux is executable ---${NC}"
+    if [ -x "$PROJECT_ROOT/ai_agent_status.tmux" ]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.tmux is executable"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.tmux is executable"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.tmux is not executable"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.tmux is not executable"
         ((TESTS_FAILED++))
     fi
 }
 
 test_tmux_plugin_sources_shared() {
-    echo -e "${YELLOW}--- Test: claudecode_status.tmux sources shared.sh ---${NC}"
-    if grep -q "source.*shared.sh" "$PROJECT_ROOT/claudecode_status.tmux"; then
+    echo -e "${YELLOW}--- Test: ai_agent_status.tmux sources shared.sh ---${NC}"
+    if grep -q "source.*shared.sh" "$PROJECT_ROOT/ai_agent_status.tmux"; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.tmux sources shared.sh"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.tmux sources shared.sh"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.tmux does not source shared.sh"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.tmux does not source shared.sh"
         ((TESTS_FAILED++))
     fi
 }
 
 test_tmux_plugin_has_main() {
-    echo -e "${YELLOW}--- Test: claudecode_status.tmux has main function ---${NC}"
-    if grep -q "^main()" "$PROJECT_ROOT/claudecode_status.tmux"; then
+    echo -e "${YELLOW}--- Test: ai_agent_status.tmux has main function ---${NC}"
+    if grep -q "^main()" "$PROJECT_ROOT/ai_agent_status.tmux"; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.tmux has main() function"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.tmux has main() function"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.tmux lacks main() function"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.tmux lacks main() function"
         ((TESTS_FAILED++))
     fi
 }
@@ -204,23 +204,23 @@ test_output_with_no_color() {
     source "$PROJECT_ROOT/scripts/session_tracker.sh"
 
     local output
-    output=$("$PROJECT_ROOT/scripts/claudecode_status.sh" 2>&1)
+    output=$("$PROJECT_ROOT/scripts/ai_agent_status.sh" 2>&1)
 
     # Should not error
     if [ $? -eq 0 ]; then
         ((TESTS_RUN++))
-        echo -e "${GREEN}PASS${NC}: claudecode_status.sh executes without error"
+        echo -e "${GREEN}PASS${NC}: ai_agent_status.sh executes without error"
         ((TESTS_PASSED++))
     else
         ((TESTS_RUN++))
-        echo -e "${RED}FAIL${NC}: claudecode_status.sh execution failed"
+        echo -e "${RED}FAIL${NC}: ai_agent_status.sh execution failed"
         ((TESTS_FAILED++))
     fi
 }
 
 test_default_icon_present() {
     echo -e "${YELLOW}--- Test: Default icon is configured ---${NC}"
-    if grep -q "DEFAULT_ICON" "$PROJECT_ROOT/scripts/claudecode_status.sh"; then
+    if grep -q "DEFAULT_ICON" "$PROJECT_ROOT/scripts/ai_agent_status.sh"; then
         ((TESTS_RUN++))
         echo -e "${GREEN}PASS${NC}: DEFAULT_ICON is defined"
         ((TESTS_PASSED++))
@@ -233,8 +233,8 @@ test_default_icon_present() {
 
 test_cache_variables_defined() {
     echo -e "${YELLOW}--- Test: Cache variables are defined ---${NC}"
-    if grep -q "CACHE_TTL" "$PROJECT_ROOT/scripts/claudecode_status.sh" && \
-       grep -q "CACHE_FILE" "$PROJECT_ROOT/scripts/claudecode_status.sh"; then
+    if grep -q "CACHE_TTL" "$PROJECT_ROOT/scripts/ai_agent_status.sh" && \
+       grep -q "CACHE_FILE" "$PROJECT_ROOT/scripts/ai_agent_status.sh"; then
         ((TESTS_RUN++))
         echo -e "${GREEN}PASS${NC}: Cache variables are defined"
         ((TESTS_PASSED++))
@@ -253,9 +253,9 @@ test_codex_option_defaults_defined() {
     echo -e "${YELLOW}--- Test: Codex option defaults are defined ---${NC}"
 
     # Check for show_codex, codex_icon, and claude_icon options
-    if grep -q "@claudecode_show_codex" "$PROJECT_ROOT/scripts/claudecode_status.sh" && \
-       grep -q "@claudecode_codex_icon" "$PROJECT_ROOT/scripts/claudecode_status.sh" && \
-       grep -q "@claudecode_claude_icon" "$PROJECT_ROOT/scripts/claudecode_status.sh"; then
+    if grep -q "@ai_agent_show_codex" "$PROJECT_ROOT/scripts/ai_agent_status.sh" && \
+       grep -q "@ai_agent_codex_icon" "$PROJECT_ROOT/scripts/ai_agent_status.sh" && \
+       grep -q "@ai_agent_claude_icon" "$PROJECT_ROOT/scripts/ai_agent_status.sh"; then
         ((TESTS_RUN++))
         echo -e "${GREEN}PASS${NC}: Codex options are defined"
         ((TESTS_PASSED++))
@@ -312,7 +312,7 @@ test_show_codex_off_hides_codex() {
     echo -e "${YELLOW}--- Test: show_codex=off option hides codex processes ---${NC}"
 
     # This is a placeholder test - actual implementation will verify
-    # that setting @claudecode_show_codex to "off" hides codex processes
+    # that setting @ai_agent_show_codex to "off" hides codex processes
     ((TESTS_RUN++))
     echo -e "${GREEN}PASS${NC}: show_codex option test placeholder"
     ((TESTS_PASSED++))
@@ -334,9 +334,9 @@ test_claude_only_output_unchanged() {
 main() {
     setup
 
-    test_claudecode_status_executable
-    test_claudecode_status_output_format
-    test_claudecode_status_contains_dots
+    test_ai_agent_status_executable
+    test_ai_agent_status_output_format
+    test_ai_agent_status_contains_dots
     test_tmux_plugin_executable
     test_tmux_plugin_sources_shared
     test_tmux_plugin_has_main

@@ -12,9 +12,9 @@ if [ -z "$SELECTED_LINE" ]; then
     exit 0
 fi
 
-# CLAUDECODE_PANE_DATA 環境変数からpane_idを検索
+# AI_AGENT_PANE_DATA 環境変数からpane_idを検索
 # フォーマット: "display_line\tpane_id\n" の繰り返し
-if [ -z "${CLAUDECODE_PANE_DATA:-}" ]; then
+if [ -z "${AI_AGENT_PANE_DATA:-}" ]; then
     echo "Preview data not available"
     exit 0
 fi
@@ -26,7 +26,7 @@ while IFS=$'\t' read -r display_line pane_id; do
         PANE_ID="$pane_id"
         break
     fi
-done <<< "$CLAUDECODE_PANE_DATA"
+done <<< "$AI_AGENT_PANE_DATA"
 
 if [ -z "$PANE_ID" ]; then
     echo "Pane not found for selection"

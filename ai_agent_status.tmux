@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# claudecode_status.tmux - TPM entry point for Claude Code status plugin
+# ai_agent_status.tmux - TPM entry point for Claude Code status plugin
 # Integrates Claude Code status display into tmux statusline
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/scripts/shared.sh"
 
 # Format string interpolation setup
-claudecode_status="#($CURRENT_DIR/scripts/claudecode_status.sh)"
-claudecode_status_interpolation="\#{claudecode_status}"
+ai_agent_status="#($CURRENT_DIR/scripts/ai_agent_status.sh)"
+ai_agent_status_interpolation="\#{ai_agent_status}"
 
 # Interpolate format strings
 do_interpolation() {
     local string="$1"
-    echo "${string/$claudecode_status_interpolation/$claudecode_status}"
+    echo "${string/$ai_agent_status_interpolation/$ai_agent_status}"
 }
 
 # Update tmux option with interpolation
@@ -34,7 +34,7 @@ update_tmux_option() {
 # Setup keybinding for Claude Code process selection
 setup_select_keybinding() {
     local select_key
-    select_key=$(get_tmux_option "@claudecode_select_key" "")
+    select_key=$(get_tmux_option "@ai_agent_select_key" "")
 
     # Skip if no key is configured
     if [ -z "$select_key" ]; then

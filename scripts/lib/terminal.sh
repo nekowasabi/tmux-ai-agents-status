@@ -294,25 +294,25 @@ get_terminal_emoji() {
     # 絵文字に変換（tmuxオプションから取得、設定がなければデフォルト値を使用）
     case "$terminal_name" in
         iTerm2|Terminal)
-            get_tmux_option "@claudecode_terminal_iterm" "🍎"
+            get_tmux_option "@ai_agent_terminal_iterm" "🍎"
             ;;
         WezTerm)
-            get_tmux_option "@claudecode_terminal_wezterm" "⚡"
+            get_tmux_option "@ai_agent_terminal_wezterm" "⚡"
             ;;
         Ghostty)
-            get_tmux_option "@claudecode_terminal_ghostty" "👻"
+            get_tmux_option "@ai_agent_terminal_ghostty" "👻"
             ;;
         WindowsTerminal)
-            get_tmux_option "@claudecode_terminal_windows" "🪟"
+            get_tmux_option "@ai_agent_terminal_windows" "🪟"
             ;;
         VSCode)
-            get_tmux_option "@claudecode_terminal_vscode" "📝"
+            get_tmux_option "@ai_agent_terminal_vscode" "📝"
             ;;
         Alacritty)
-            get_tmux_option "@claudecode_terminal_alacritty" "🔲"
+            get_tmux_option "@ai_agent_terminal_alacritty" "🔲"
             ;;
         *)
-            get_tmux_option "@claudecode_terminal_unknown" "❓"
+            get_tmux_option "@ai_agent_terminal_unknown" "❓"
             ;;
     esac
 }
@@ -419,25 +419,25 @@ get_terminal_emoji_cached() {
     # 絵文字に変換（キャッシュ版tmuxオプションから取得、設定がなければデフォルト値を使用）
     case "$terminal_name" in
         iTerm2|Terminal)
-            get_tmux_option_cached "@claudecode_terminal_iterm" "🍎"
+            get_tmux_option_cached "@ai_agent_terminal_iterm" "🍎"
             ;;
         WezTerm)
-            get_tmux_option_cached "@claudecode_terminal_wezterm" "⚡"
+            get_tmux_option_cached "@ai_agent_terminal_wezterm" "⚡"
             ;;
         Ghostty)
-            get_tmux_option_cached "@claudecode_terminal_ghostty" "👻"
+            get_tmux_option_cached "@ai_agent_terminal_ghostty" "👻"
             ;;
         WindowsTerminal)
-            get_tmux_option_cached "@claudecode_terminal_windows" "🪟"
+            get_tmux_option_cached "@ai_agent_terminal_windows" "🪟"
             ;;
         VSCode)
-            get_tmux_option_cached "@claudecode_terminal_vscode" "📝"
+            get_tmux_option_cached "@ai_agent_terminal_vscode" "📝"
             ;;
         Alacritty)
-            get_tmux_option_cached "@claudecode_terminal_alacritty" "🔲"
+            get_tmux_option_cached "@ai_agent_terminal_alacritty" "🔲"
             ;;
         *)
-            get_tmux_option_cached "@claudecode_terminal_unknown" "❓"
+            get_tmux_option_cached "@ai_agent_terminal_unknown" "❓"
             ;;
     esac
 }

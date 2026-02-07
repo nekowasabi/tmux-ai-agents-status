@@ -44,7 +44,7 @@ get_tmux_option_cached() {
     fi
 
     # キャッシュから取得
-    # フォーマット: "@claudecode_option_name value"
+    # フォーマット: "@ai_agent_option_name value"
     local option_value
     option_value=$(awk -v opt="$option" '$1 == opt { $1=""; print substr($0, 2); exit }' "$BATCH_TMUX_OPTIONS_FILE")
 
@@ -58,7 +58,7 @@ get_tmux_option_cached() {
 # バッチ版: 複数のtmuxオプションを一括取得（高速化）
 # 引数: "オプション名=デフォルト値" のペアを複数指定
 # 戻り値: "オプション名=値" 形式の行を出力（evalで変数に展開可能）
-# 使用例: eval "$(get_tmux_options_bulk "@claudecode_working_dot=working" "@claudecode_idle_dot=idle")"
+# 使用例: eval "$(get_tmux_options_bulk "@ai_agent_working_dot=working" "@ai_agent_idle_dot=idle")"
 get_tmux_options_bulk() {
     # キャッシュが利用可能かチェック
     if [ "$BATCH_INITIALIZED" != "1" ] || [ -z "$BATCH_TMUX_OPTIONS_FILE" ] || [ ! -f "$BATCH_TMUX_OPTIONS_FILE" ]; then
@@ -68,8 +68,8 @@ get_tmux_options_bulk() {
             local default="${arg#*=}"
             local val
             val=$(get_tmux_option "$opt" "$default")
-            # オプション名から@claudecode_を除去して変数名に
-            local varname="${opt#@claudecode_}"
+            # オプション名から@ai_agent_を除去して変数名に
+            local varname="${opt#@ai_agent_}"
             echo "${varname}='${val}'"
         done
         return
@@ -84,9 +84,9 @@ get_tmux_options_bulk() {
             opt = kv[1]
             default_val = kv[2]
             defaults[opt] = default_val
-            # 変数名は@claudecode_を除去
+            # 変数名は@ai_agent_を除去
             varname = opt
-            gsub(/^@claudecode_/, "", varname)
+            gsub(/^@ai_agent_/, "", varname)
             varnames[opt] = varname
         }
     }

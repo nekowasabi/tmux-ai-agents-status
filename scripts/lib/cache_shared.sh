@@ -10,10 +10,10 @@ source "${BASH_SOURCE[0]%/*}/platform.sh"
 # ==============================================================================
 # Shared Cache Management (5s TTL)
 # ==============================================================================
-# 共有キャッシュ（claudecode_status.sh → select_claude.sh）
-# select_claude.sh の高速化のため、claudecode_status.sh が収集した
+# 共有キャッシュ（ai_agent_status.sh → select_claude.sh）
+# select_claude.sh の高速化のため、ai_agent_status.sh が収集した
 # プロセス情報を共有キャッシュに書き出す
-SHARED_CACHE_FILE="/tmp/claudecode_shared_process_cache"
+SHARED_CACHE_FILE="/tmp/ai_agent_shared_process_cache"
 SHARED_CACHE_TTL=5  # キャッシュ有効期間（秒）
 
 # 共有キャッシュにプロセス情報を書き出す
@@ -31,15 +31,15 @@ write_shared_cache() {
     # tmuxオプションを一括取得（9回の呼び出しを1回に最適化）
     local tmux_opts
     tmux_opts=$(tmux show-options -g 2>/dev/null | awk '
-        /@claudecode_working_dot/ { gsub(/@claudecode_working_dot /,""); wd=$0 }
-        /@claudecode_idle_dot/ { gsub(/@claudecode_idle_dot /,""); id=$0 }
-        /@claudecode_terminal_iterm/ { gsub(/@claudecode_terminal_iterm /,""); ti=$0 }
-        /@claudecode_terminal_wezterm/ { gsub(/@claudecode_terminal_wezterm /,""); tw=$0 }
-        /@claudecode_terminal_ghostty/ { gsub(/@claudecode_terminal_ghostty /,""); tg=$0 }
-        /@claudecode_terminal_windows/ { gsub(/@claudecode_terminal_windows /,""); twin=$0 }
-        /@claudecode_terminal_vscode/ { gsub(/@claudecode_terminal_vscode /,""); tvs=$0 }
-        /@claudecode_terminal_alacritty/ { gsub(/@claudecode_terminal_alacritty /,""); tala=$0 }
-        /@claudecode_terminal_unknown/ { gsub(/@claudecode_terminal_unknown /,""); tu=$0 }
+        /@ai_agent_working_dot/ { gsub(/@ai_agent_working_dot /,""); wd=$0 }
+        /@ai_agent_idle_dot/ { gsub(/@ai_agent_idle_dot /,""); id=$0 }
+        /@ai_agent_terminal_iterm/ { gsub(/@ai_agent_terminal_iterm /,""); ti=$0 }
+        /@ai_agent_terminal_wezterm/ { gsub(/@ai_agent_terminal_wezterm /,""); tw=$0 }
+        /@ai_agent_terminal_ghostty/ { gsub(/@ai_agent_terminal_ghostty /,""); tg=$0 }
+        /@ai_agent_terminal_windows/ { gsub(/@ai_agent_terminal_windows /,""); twin=$0 }
+        /@ai_agent_terminal_vscode/ { gsub(/@ai_agent_terminal_vscode /,""); tvs=$0 }
+        /@ai_agent_terminal_alacritty/ { gsub(/@ai_agent_terminal_alacritty /,""); tala=$0 }
+        /@ai_agent_terminal_unknown/ { gsub(/@ai_agent_terminal_unknown /,""); tu=$0 }
         END {
             if (wd=="") wd="🤖"
             if (id=="") id="🔔"

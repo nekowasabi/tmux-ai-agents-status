@@ -42,7 +42,7 @@ init_batch_cache() {
     fi
 
     # 一時ディレクトリを1回で作成
-    BATCH_DIR="/tmp/claudecode_batch_$$"
+    BATCH_DIR="/tmp/ai_agent_batch_$$"
     mkdir -p "$BATCH_DIR"
     BATCH_PROCESS_TREE_FILE="$BATCH_DIR/ps"
     BATCH_PANE_INFO_FILE="$BATCH_DIR/panes"
@@ -66,7 +66,7 @@ init_batch_cache() {
     local panes_pid=$!
 
     # tmuxオプション
-    tmux show-options -g 2>/dev/null | grep "^@claudecode" > "$BATCH_TMUX_OPTIONS_FILE" &
+    tmux show-options -g 2>/dev/null | grep "^@ai_agent" > "$BATCH_TMUX_OPTIONS_FILE" &
     local opts_pid=$!
 
     # tmuxクライアント情報

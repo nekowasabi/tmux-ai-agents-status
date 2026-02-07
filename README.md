@@ -31,7 +31,7 @@ git clone https://github.com/nekowasabi/tmux-ai-agents-status ~/.tmux/plugins/tm
 
 2. Add the following to `~/.tmux.conf`:
 ```bash
-run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
+run-shell "~/.tmux/plugins/tmux-ai-agents-status/ai_agent_status.tmux"
 ```
 
 3. Restart tmux.
@@ -40,7 +40,7 @@ run-shell "~/.tmux/plugins/tmux-ai-agents-status/claudecode_status.tmux"
 
 ### Default Display
 
-By default, you need to set the `#{claudecode_status}` format string in your status bar.
+By default, you need to set the `#{ai_agent_status}` format string in your status bar.
 
 #### Status Bar Position Settings
 
@@ -48,70 +48,70 @@ Add one of the following to `~/.tmux.conf`:
 
 ```bash
 # Display in status-right
-set -g status-right "#{claudecode_status} #[default]%H:%M"
+set -g status-right "#{ai_agent_status} #[default]%H:%M"
 
 # Display in status-left
-set -g status-left "#{claudecode_status} #[default]"
+set -g status-left "#{ai_agent_status} #[default]"
 
 # Display in status-format[1] (top status bar)
 set -g status 2
-set -g status-format[1] "#{claudecode_status}"
+set -g status-format[1] "#{ai_agent_status}"
 ```
 
 ### Customization Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `@claudecode_working_dot` | `🤖` | Dot for working state (robot emoji) |
-| `@claudecode_idle_dot` | `🔔` | Dot for idle state (bell emoji) |
-| `@claudecode_working_color` | `""` (empty) | Color for working state (empty=tmux default) |
-| `@claudecode_idle_color` | `""` (empty) | Color for idle state (empty=tmux default) |
-| `@claudecode_separator` | `" "` | Separator between sessions |
-| `@claudecode_left_sep` | `""` (empty) | Left enclosure character |
-| `@claudecode_right_sep` | `""` (empty) | Right enclosure character |
-| `@claudecode_show_terminal` | `on` | Show terminal emoji |
-| `@claudecode_show_pane` | `on` | Show pane number |
-| `@claudecode_terminal_iterm` | `🍎` | Emoji for iTerm/Terminal |
-| `@claudecode_terminal_wezterm` | `⚡` | Emoji for WezTerm |
-| `@claudecode_terminal_ghostty` | `👻` | Emoji for Ghostty |
-| `@claudecode_terminal_windows` | `🪟` | Emoji for Windows Terminal |
-| `@claudecode_terminal_unknown` | `❓` | Emoji for unknown terminal |
-| `@claudecode_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
-| `@claudecode_select_key` | `""` (empty) | Keybinding to open process selector (e.g., `C-g`) |
-| `@claudecode_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | fzf options for process selector |
-| `@claudecode_fzf_preview` | `on` | Enable/disable fzf preview pane (`on`/`off`) |
-| `@claudecode_fzf_preview_lines` | `30` | Number of lines to show in preview |
-| `@claudecode_fzf_preview_position` | `down` | fzf preview window position: `up`, `down`, `left`, `right` |
-| `@claudecode_fzf_preview_size` | `50%` | fzf preview window size (e.g., `50%`, `40%`, `60%`) |
+| `@ai_agent_working_dot` | `🤖` | Dot for working state (robot emoji) |
+| `@ai_agent_idle_dot` | `🔔` | Dot for idle state (bell emoji) |
+| `@ai_agent_working_color` | `""` (empty) | Color for working state (empty=tmux default) |
+| `@ai_agent_idle_color` | `""` (empty) | Color for idle state (empty=tmux default) |
+| `@ai_agent_separator` | `" "` | Separator between sessions |
+| `@ai_agent_left_sep` | `""` (empty) | Left enclosure character |
+| `@ai_agent_right_sep` | `""` (empty) | Right enclosure character |
+| `@ai_agent_show_terminal` | `on` | Show terminal emoji |
+| `@ai_agent_show_pane` | `on` | Show pane number |
+| `@ai_agent_terminal_iterm` | `🍎` | Emoji for iTerm/Terminal |
+| `@ai_agent_terminal_wezterm` | `⚡` | Emoji for WezTerm |
+| `@ai_agent_terminal_ghostty` | `👻` | Emoji for Ghostty |
+| `@ai_agent_terminal_windows` | `🪟` | Emoji for Windows Terminal |
+| `@ai_agent_terminal_unknown` | `❓` | Emoji for unknown terminal |
+| `@ai_agent_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
+| `@ai_agent_select_key` | `""` (empty) | Keybinding to open process selector (e.g., `C-g`) |
+| `@ai_agent_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | fzf options for process selector |
+| `@ai_agent_fzf_preview` | `on` | Enable/disable fzf preview pane (`on`/`off`) |
+| `@ai_agent_fzf_preview_lines` | `30` | Number of lines to show in preview |
+| `@ai_agent_fzf_preview_position` | `down` | fzf preview window position: `up`, `down`, `left`, `right` |
+| `@ai_agent_fzf_preview_size` | `50%` | fzf preview window size (e.g., `50%`, `40%`, `60%`) |
 
 ### Customization Examples
 
 ```bash
 # Add enclosure characters
-set -g @claudecode_left_sep "["
-set -g @claudecode_right_sep "]"
+set -g @ai_agent_left_sep "["
+set -g @ai_agent_right_sep "]"
 # Result: [🍎#0 project-name 🤖]
 
 # Customize terminal emojis
-set -g @claudecode_terminal_iterm "🖥️"
-set -g @claudecode_terminal_wezterm "W"
+set -g @ai_agent_terminal_iterm "🖥️"
+set -g @ai_agent_terminal_wezterm "W"
 
 # Change working/idle detection threshold (default: 30 seconds)
-set -g @claudecode_working_threshold "10"
+set -g @ai_agent_working_threshold "10"
 
 # Enable process selector with keybinding (requires fzf)
-set -g @claudecode_select_key "C-j"  # prefix + Ctrl-j to open selector
+set -g @ai_agent_select_key "C-j"  # prefix + Ctrl-j to open selector
 
 # Customize fzf options for process selector
-set -g @claudecode_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
+set -g @ai_agent_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
 
 # Customize fzf preview window (optional)
-set -g @claudecode_fzf_preview_position "right"  # or up, down, left
-set -g @claudecode_fzf_preview_size "60%"
+set -g @ai_agent_fzf_preview_position "right"  # or up, down, left
+set -g @ai_agent_fzf_preview_size "60%"
 
 # Customize colors (optional)
-set -g @claudecode_working_color "#f97316"
-set -g @claudecode_idle_color "#22c55e"
+set -g @ai_agent_working_color "#f97316"
+set -g @ai_agent_idle_color "#22c55e"
 ```
 
 ### About Color Settings
@@ -137,7 +137,7 @@ The process selector allows you to quickly switch between multiple Claude Code s
 **Setup:**
 ```bash
 # Enable the process selector with a keybinding
-set -g @claudecode_select_key "C-j"
+set -g @ai_agent_select_key "C-j"
 ```
 
 **Usage - Keybinding Mode:**
@@ -167,14 +167,14 @@ set -g @claudecode_select_key "C-j"
 **Advanced Configuration:**
 ```bash
 # Customize keybinding
-set -g @claudecode_select_key "C-g"
+set -g @ai_agent_select_key "C-g"
 
 # Customize fzf appearance
-set -g @claudecode_fzf_opts "--height=50% --reverse --border --prompt='🤖 Select: '"
+set -g @ai_agent_fzf_opts "--height=50% --reverse --border --prompt='🤖 Select: '"
 
 # Use with custom colors
-set -g @claudecode_working_color "#f97316"
-set -g @claudecode_idle_color "#22c55e"
+set -g @ai_agent_working_color "#f97316"
+set -g @ai_agent_idle_color "#22c55e"
 ```
 
 **How it Works:**
@@ -201,7 +201,7 @@ set -g @claudecode_idle_color "#22c55e"
 The default threshold (5 seconds) can be changed via environment variable:
 
 ```bash
-export CLAUDECODE_WORKING_THRESHOLD=10  # Change to 10 seconds
+export AI_AGENT_WORKING_THRESHOLD=10  # Change to 10 seconds
 ```
 
 ### Cache Function
@@ -237,7 +237,7 @@ tmux show-option -g status-right
 
 1. Delete cache files:
 ```bash
-rm -f /tmp/claudecode_status_cache_*
+rm -f /tmp/ai_agent_status_cache_*
 ```
 
 2. Check if debug files exist:
@@ -266,11 +266,11 @@ Ensure all tests PASS.
 
 ```
 tmux-ai-agents-status/
-├── claudecode_status.tmux      # TPM entry point
+├── ai_agent_status.tmux       # TPM entry point
 ├── scripts/
 │   ├── shared.sh               # Common utilities
 │   ├── session_tracker.sh       # Session tracking logic
-│   ├── claudecode_status.sh     # Main output script
+│   ├── ai_agent_status.sh      # Main output script
 │   ├── select_claude.sh         # Process selector UI (fzf)
 │   └── focus_session.sh         # Terminal focus & pane switch
 ├── tests/
