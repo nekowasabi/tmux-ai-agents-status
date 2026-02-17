@@ -340,6 +340,36 @@ get_terminal_for_session_cached() {
     fi
 }
 
+# ターミナル名から絵文字を取得（キャッシュ利用時用）
+# $1: terminal_name（iTerm2, WezTerm, Ghostty, etc.）
+# 戻り値: 絵文字
+get_terminal_emoji_by_name() {
+    local terminal_name="$1"
+    case "$terminal_name" in
+        iTerm2|Terminal)
+            get_tmux_option "@ai_agent_terminal_iterm" "🍎"
+            ;;
+        WezTerm)
+            get_tmux_option "@ai_agent_terminal_wezterm" "⚡"
+            ;;
+        Ghostty)
+            get_tmux_option "@ai_agent_terminal_ghostty" "👻"
+            ;;
+        WindowsTerminal)
+            get_tmux_option "@ai_agent_terminal_windows" "🪟"
+            ;;
+        VSCode)
+            get_tmux_option "@ai_agent_terminal_vscode" "📝"
+            ;;
+        Alacritty)
+            get_tmux_option "@ai_agent_terminal_alacritty" "🔲"
+            ;;
+        *)
+            get_tmux_option "@ai_agent_terminal_unknown" "❓"
+            ;;
+    esac
+}
+
 # バッチ版: ターミナルアプリ名を絵文字で取得（キャッシュ使用）
 # セッション単位でキャッシュし、親プロセス走査を最小化
 # $1: PID（Claude Codeプロセス）
@@ -482,9 +512,11 @@ _prebuild_terminal_cache() {
             pid = fields[1]
             parent = fields[2]
             comm = fields[3]
+            args = fields[4]
             if (pid != "PID" && pid != "") {
                 ppid[pid] = parent
-                pcomm[pid] = comm
+                # comm is truncated on macOS (~16 chars), use args (full path) for matching
+                pcomm[pid] = (args != "" ? args : comm)
             }
             next
         }

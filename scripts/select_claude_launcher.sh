@@ -9,6 +9,7 @@ ORIGINAL_PANE=$(tmux display-message -p '#{pane_id}')
 
 # Step 1: Get process list using internal format (runs OUTSIDE popup)
 source "$CURRENT_DIR/shared.sh"
+source "$CURRENT_DIR/session_tracker.sh"
 
 # Initialize batch cache for efficient data gathering
 init_batch_cache
@@ -21,9 +22,17 @@ if [ -z "$process_data" ]; then
     exit 0
 fi
 
-# Get working/idle status icons from tmux options
+# Get working/idle status icons from tmux options (legacy, kept for backward compat)
 working_dot=$(get_tmux_option "@ai_agent_working_dot" "🤖")
 idle_dot=$(get_tmux_option "@ai_agent_idle_dot" "🔔")
+
+# 4-state status icons (colorful emoji for better visibility)
+running_icon=$(get_tmux_option "@ai_agent_running_icon" "🟢")
+waiting_icon=$(get_tmux_option "@ai_agent_waiting_icon" "🟡")
+idle_icon_new=$(get_tmux_option "@ai_agent_idle_icon_new" "🔵")
+unknown_icon=$(get_tmux_option "@ai_agent_unknown_icon" "❓")
+plan_mode_indicator=$(get_tmux_option "@ai_agent_plan_mode_indicator" "⏸")
+accept_edits_indicator=$(get_tmux_option "@ai_agent_accept_edits_indicator" "⏵⏵")
 
 # Get working threshold
 working_threshold=$(get_tmux_option "@ai_agent_working_threshold" "5")
@@ -54,20 +63,34 @@ while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_na
         *) emoji="❓" ;;
     esac
 
-    # Determine status (working/idle) based on TTY mtime
-    status_icon="$idle_dot"
-    if [ -n "$tty_path" ] && [ -e "$tty_path" ]; then
-        tty_mtime=$(get_file_mtime "$tty_path" 2>/dev/null || echo "0")
-        if [ -n "$tty_mtime" ] && [ "$tty_mtime" != "0" ]; then
-            time_diff=$((current_time - tty_mtime))
-            if [ "$time_diff" -lt "$working_threshold" ]; then
-                status_icon="$working_dot"
-            fi
-        fi
+    # 4-state status detection using pane content analysis
+    detailed_status=$(detect_claude_status_from_pane "$pane_id")
+
+    # Parse: "running:1m30s:plan_mode" or "idle:plan_mode" or "idle" etc.
+    IFS=':' read -r base_st elapsed_st mode_st <<< "$detailed_status"
+    if [[ "$elapsed_st" == "plan_mode" || "$elapsed_st" == "accept_edits" ]]; then
+        mode_st="$elapsed_st"
+        elapsed_st=""
+    fi
+
+    # Map to icon
+    case "$base_st" in
+        running) status_prefix="$running_icon" ;;
+        waiting) status_prefix="$waiting_icon" ;;
+        idle)    status_prefix="$idle_icon_new" ;;
+        *)       status_prefix="$unknown_icon" ;;
+    esac
+
+    # Append elapsed time and mode indicator
+    [ -n "$elapsed_st" ] && status_prefix="${status_prefix}${elapsed_st}"
+    if [ "$mode_st" = "plan_mode" ]; then
+        status_prefix="${status_prefix} ${plan_mode_indicator}"
+    elif [ "$mode_st" = "accept_edits" ]; then
+        status_prefix="${status_prefix} ${accept_edits_indicator}"
     fi
 
     # Include session name for cross-session visibility and status icon
-    display_line="  ${status_icon}${emoji} #${window_index} ${project_name} [${session_name}]"
+    display_line="  ${status_prefix} ${emoji} #${window_index} ${project_name} [${session_name}]"
     echo "$display_line" >> "$TEMP_DATA"
     echo "$pane_id" >> "${TEMP_DATA}_panes"
 done <<< "$process_data"

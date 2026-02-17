@@ -17,6 +17,21 @@ DEFAULT_LEFT_SEP=""                # 左側の囲み文字
 DEFAULT_RIGHT_SEP=""               # 右側の囲み文字
 DEFAULT_WORKING_THRESHOLD=30       # 作業中と判定する時間閾値（秒）
 
+# 4段階状態表示のデフォルト
+DEFAULT_RUNNING_DOT="●"            # 実行中
+DEFAULT_WAITING_DOT="◐"           # 待機中
+DEFAULT_IDLE_DOT_NEW="○"           # アイドル
+DEFAULT_UNKNOWN_DOT="?"            # 不明
+
+DEFAULT_RUNNING_COLOR="green"
+DEFAULT_WAITING_COLOR="yellow"
+DEFAULT_IDLE_COLOR_NEW="colour240"  # dim gray
+DEFAULT_UNKNOWN_COLOR="colour244"
+
+# モード表示のデフォルト
+DEFAULT_PLAN_MODE_INDICATOR="⏸"
+DEFAULT_ACCEPT_EDITS_INDICATOR="⏵⏵"
+
 # Note: get_status_priority and get_terminal_priority are now in shared.sh
 
 # Cache configuration
@@ -85,6 +100,23 @@ main() {
     codex_icon=$(get_tmux_option "@ai_agent_codex_icon" "🦾")
     claude_icon=$(get_tmux_option "@ai_agent_claude_icon" "")
 
+    # 4段階状態表示オプション（running_dot は working_dot をフォールバックとして使用）
+    local running_dot waiting_dot_opt idle_dot_new unknown_dot
+    local running_color waiting_color idle_color_new unknown_color
+    running_dot=$(get_tmux_option "@ai_agent_running_dot" "$DEFAULT_RUNNING_DOT")
+    waiting_dot_opt=$(get_tmux_option "@ai_agent_waiting_dot" "$DEFAULT_WAITING_DOT")
+    idle_dot_new=$(get_tmux_option "@ai_agent_idle_dot_new" "$DEFAULT_IDLE_DOT_NEW")
+    unknown_dot=$(get_tmux_option "@ai_agent_unknown_dot" "$DEFAULT_UNKNOWN_DOT")
+    running_color=$(get_tmux_option "@ai_agent_running_color" "$DEFAULT_RUNNING_COLOR")
+    waiting_color=$(get_tmux_option "@ai_agent_waiting_color" "$DEFAULT_WAITING_COLOR")
+    idle_color_new=$(get_tmux_option "@ai_agent_idle_color_new" "$DEFAULT_IDLE_COLOR_NEW")
+    unknown_color=$(get_tmux_option "@ai_agent_unknown_color" "$DEFAULT_UNKNOWN_COLOR")
+
+    # モード表示オプション
+    local plan_mode_indicator accept_edits_indicator
+    plan_mode_indicator=$(get_tmux_option "@ai_agent_plan_mode_indicator" "$DEFAULT_PLAN_MODE_INDICATOR")
+    accept_edits_indicator=$(get_tmux_option "@ai_agent_accept_edits_indicator" "$DEFAULT_ACCEPT_EDITS_INDICATOR")
+
     # Export working threshold for session_tracker.sh
     export AI_AGENT_WORKING_THRESHOLD="$working_threshold"
 
@@ -95,20 +127,20 @@ main() {
     local output=""
     local first=1
 
-    # Parse details (terminal_emoji:pane_index:project_name:status|...)
+    # Parse details (proc_type:terminal_emoji:pane_index:project_name:compat_status:base_status:elapsed:mode|...)
     IFS='|' read -ra entries <<< "$details"
 
     # Sort entries: first by status priority, then by terminal emoji priority, then by pane index
     # Build sortable list with priority prefix
     local sort_input=""
     for entry in "${entries[@]}"; do
+        # 8フィールドからソート用にcompat_statusを抽出
         local temp="${entry}"
-        local terminal_emoji="${temp%%:*}"
-        temp="${temp#*:}"
-        local pane_index="${temp%%:*}"
-        temp="${temp#*:}"
-        local project_name="${temp%%:*}"
-        local status="${temp##*:}"
+        local _pt="${temp%%:*}"; temp="${temp#*:}"
+        local terminal_emoji="${temp%%:*}"; temp="${temp#*:}"
+        local pane_index="${temp%%:*}"; temp="${temp#*:}"
+        local _pn="${temp%%:*}"; temp="${temp#*:}"
+        local status="${temp%%:*}"
 
         # Get priorities from helper functions
         local status_priority
@@ -127,7 +159,7 @@ main() {
         sort_input+="$(printf '%d:%d:%03d:%s' "$status_priority" "$terminal_priority" "$pane_num" "$entry")"$'\n'
     done
 
-    # Sort and extract original entries (Phase 4: 5 fields)
+    # Sort and extract original entries (Phase 5: 8 fields)
     local sorted_entries=()
     while IFS= read -r line; do
         [ -n "$line" ] && sorted_entries+=("$line")
@@ -135,27 +167,52 @@ main() {
 
     # Use sorted entries
     for entry in "${sorted_entries[@]}"; do
-        local proc_type terminal_emoji pane_index project_name status dot color prefix type_indicator
+        local proc_type terminal_emoji pane_index project_name compat_status base_status elapsed mode
+        local dot color prefix type_indicator mode_indicator elapsed_display
 
-        # Parse entry (Phase 4: process_type:terminal_emoji:pane_index:project_name:status)
-        # 5つのフィールドに分割
+        # Parse entry (8フィールド: proc_type:terminal_emoji:pane_index:project_name:compat_status:base_status:elapsed:mode)
         local temp="${entry}"
-        proc_type="${temp%%:*}"
-        temp="${temp#*:}"
-        terminal_emoji="${temp%%:*}"
-        temp="${temp#*:}"
-        pane_index="${temp%%:*}"
-        temp="${temp#*:}"
-        project_name="${temp%%:*}"
-        status="${temp##*:}"
+        proc_type="${temp%%:*}"; temp="${temp#*:}"
+        terminal_emoji="${temp%%:*}"; temp="${temp#*:}"
+        pane_index="${temp%%:*}"; temp="${temp#*:}"
+        project_name="${temp%%:*}"; temp="${temp#*:}"
+        compat_status="${temp%%:*}"; temp="${temp#*:}"
+        base_status="${temp%%:*}"; temp="${temp#*:}"
+        elapsed="${temp%%:*}"; temp="${temp#*:}"
+        mode="${temp}"
 
-        # 状態に応じてドットと色を選択
-        if [ "$status" = "working" ]; then
-            dot="$working_dot"
-            color="$working_color"
-        else
-            dot="$idle_dot"
-            color="$idle_color"
+        # 4段階状態に応じてドットと色を選択
+        case "$base_status" in
+            running)
+                dot="$running_dot"
+                color="$running_color"
+                ;;
+            waiting)
+                dot="$waiting_dot_opt"
+                color="$waiting_color"
+                ;;
+            idle)
+                dot="$idle_dot_new"
+                color="$idle_color_new"
+                ;;
+            *)
+                dot="$unknown_dot"
+                color="$unknown_color"
+                ;;
+        esac
+
+        # モードインジケータを構築
+        mode_indicator=""
+        if [ "$mode" = "plan_mode" ]; then
+            mode_indicator="$plan_mode_indicator"
+        elif [ "$mode" = "accept_edits" ]; then
+            mode_indicator="$accept_edits_indicator"
+        fi
+
+        # 経過時間表示
+        elapsed_display=""
+        if [ -n "$elapsed" ]; then
+            elapsed_display="$elapsed"
         fi
 
         # Phase 4: プロセスタイプに応じたアイコンを追加
@@ -197,8 +254,8 @@ main() {
             formatted_dot="${dot}"
         fi
 
-        # プレフィックス + プロジェクト名 + ドットを追加（左右の囲み文字付き）
-        output+="${left_sep}${prefix}${project_name} ${formatted_dot}#[default]${right_sep}"
+        # 新形式: prefix + project_name + mode_indicator + dot + elapsed_time
+        output+="${left_sep}${prefix}${project_name} ${mode_indicator}${formatted_dot}${elapsed_display}#[default]${right_sep}"
     done
 
     output+="  "  # Right margin

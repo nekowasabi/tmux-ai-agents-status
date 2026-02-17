@@ -13,6 +13,7 @@
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/shared.sh"
+source "$CURRENT_DIR/session_tracker.sh"
 
 # 共有キャッシュを確認（ai_agent_status.shが生成したもの）
 # 新鮮なキャッシュがあればバッチ初期化をスキップして高速化
@@ -100,6 +101,15 @@ generate_process_list() {
     : "${terminal_iterm:=🍎}" "${terminal_wezterm:=⚡}" "${terminal_ghostty:=👻}" "${terminal_windows:=🪟}" "${terminal_vscode:=📝}" "${terminal_alacritty:=🔲}" "${terminal_unknown:=❓}"
     : "${show_codex:=on}" "${codex_icon:=🦾}" "${claude_icon:=}"
 
+    # 4-state status icons (colorful emoji for better visibility)
+    local running_icon waiting_icon idle_icon_new unknown_icon plan_mode_indicator accept_edits_indicator
+    running_icon=$(get_tmux_option "@ai_agent_running_icon" "🟢")
+    waiting_icon=$(get_tmux_option "@ai_agent_waiting_icon" "🟡")
+    idle_icon_new=$(get_tmux_option "@ai_agent_idle_icon_new" "🔵")
+    unknown_icon=$(get_tmux_option "@ai_agent_unknown_icon" "❓")
+    plan_mode_indicator=$(get_tmux_option "@ai_agent_plan_mode_indicator" "⏸")
+    accept_edits_indicator=$(get_tmux_option "@ai_agent_accept_edits_indicator" "⏵⏵")
+
     # 現在時刻とthreshold（EPOCHSECONDS使用で高速化）
     local current_time="${EPOCHSECONDS:-$(date +%s)}"
     local threshold="${WORKING_THRESHOLD:-5}"
@@ -124,14 +134,47 @@ generate_process_list() {
         fi
     fi
 
-    # TTY mtime + batch_info を1つのawkで処理し、ソート済みで出力
+    # Pre-compute pane statuses using detect_claude_status_from_pane (Bash loop)
+    # Format: pane_id<TAB>base_status<TAB>elapsed<TAB>mode
+    local pane_status_data=""
+    local seen_panes_pre=""
+    while IFS='|' read -r _pid pane_id _rest; do
+        [ -z "$pane_id" ] && continue
+        [[ "$seen_panes_pre" == *"|$pane_id|"* ]] && continue
+        seen_panes_pre+="|$pane_id|"
+
+        local detailed_status
+        detailed_status=$(detect_claude_status_from_pane "$pane_id")
+
+        # Parse: "running:1m30s:plan_mode" or "idle:plan_mode" or "idle" etc.
+        local base_st="" elapsed_st="" mode_st=""
+        IFS=':' read -r base_st elapsed_st mode_st <<< "$detailed_status"
+        # Fix case where elapsed is actually a mode name
+        if [[ "$elapsed_st" == "plan_mode" || "$elapsed_st" == "accept_edits" ]]; then
+            mode_st="$elapsed_st"
+            elapsed_st=""
+        fi
+
+        if [ -n "$pane_status_data" ]; then
+            pane_status_data+=$'\n'
+        fi
+        pane_status_data+="${pane_id}"$'\t'"${base_st}"$'\t'"${elapsed_st}"$'\t'"${mode_st}"
+    done <<< "$batch_info"
+
+    # Combine pane status data + batch_info into single awk pass
     {
-        [ -n "$tty_stat_data" ] && echo "$tty_stat_data"
+        echo "$pane_status_data"
         echo "---SEPARATOR---"
         echo "$batch_info"
     } | awk -F'|' \
-        -v working_icon="$working_dot" \
-        -v idle_icon="$idle_dot" \
+        -v running_icon="$running_icon" \
+        -v waiting_icon="$waiting_icon" \
+        -v idle_icon="$idle_icon_new" \
+        -v unknown_icon="$unknown_icon" \
+        -v plan_ind="$plan_mode_indicator" \
+        -v accept_ind="$accept_edits_indicator" \
+        -v working_icon_legacy="$working_dot" \
+        -v idle_icon_legacy="$idle_dot" \
         -v emoji_iterm="$terminal_iterm" \
         -v emoji_wezterm="$terminal_wezterm" \
         -v emoji_ghostty="$terminal_ghostty" \
@@ -139,8 +182,6 @@ generate_process_list() {
         -v emoji_vscode="$terminal_vscode" \
         -v emoji_alacritty="$terminal_alacritty" \
         -v emoji_unknown="$terminal_unknown" \
-        -v current_time="$current_time" \
-        -v threshold="$threshold" \
         -v show_codex="$show_codex" \
         -v codex_icon="$codex_icon" \
         -v claude_icon="$claude_icon" \
@@ -148,8 +189,11 @@ generate_process_list() {
     BEGIN { in_data = 0; count = 0 }
     /^---SEPARATOR---$/ { in_data = 1; next }
     !in_data {
-        split($0, parts, " ")
-        tty_mtime[parts[1]] = parts[2]
+        # Parse pane status data (TAB-separated: pane_id, base_status, elapsed, mode)
+        split($0, ps, "\t")
+        pane_base_status[ps[1]] = ps[2]
+        pane_elapsed[ps[1]] = ps[3]
+        pane_mode[ps[1]] = ps[4]
         next
     }
     {
@@ -188,12 +232,32 @@ generate_process_list() {
         if (proj in pcnt) { pcnt[proj]++; proj = proj "#" pcnt[proj] }
         else pcnt[proj] = 1
 
-        # Status (TTY mtime based)
-        status = "idle"; spri = 1
-        if (tty_path in tty_mtime && (current_time - tty_mtime[tty_path]) < threshold) {
-            status = "working"; spri = 0
+        # 4-state status from pre-computed pane status
+        base_st = pane_base_status[pane_id]
+        elapsed = pane_elapsed[pane_id]
+        mode = pane_mode[pane_id]
+
+        if (base_st == "") base_st = "unknown"
+
+        # Status icon and sort priority
+        if (base_st == "running") {
+            icon = running_icon; spri = 0
+        } else if (base_st == "waiting") {
+            icon = waiting_icon; spri = 0
+        } else if (base_st == "idle") {
+            icon = idle_icon; spri = 1
+        } else {
+            icon = unknown_icon; spri = 2
         }
-        icon = (status == "working") ? working_icon : idle_icon
+
+        # Build status prefix: icon + elapsed + mode indicator
+        status_prefix = icon
+        if (elapsed != "") status_prefix = status_prefix elapsed
+        if (mode == "plan_mode") status_prefix = status_prefix " " plan_ind
+        else if (mode == "accept_edits") status_prefix = status_prefix " " accept_ind
+
+        # Compat status for output
+        compat_status = (base_st == "running" || base_st == "waiting") ? "working" : "idle"
 
         # Phase 5: Process type icon
         type_icon = ""
@@ -205,11 +269,11 @@ generate_process_list() {
 
         # Display line
         pidx = "#" window_index
-        line = icon type_icon emoji " " pidx " " proj
+        line = status_prefix " " type_icon emoji " " pidx " " proj
         if (session_name != "") line = line " [" session_name "]"
 
         # Store for sorting (add proc_type to data)
-        data[count] = pane_id "|" emoji "|" pidx "|" proj "|" status "|" proc_type "|" line
+        data[count] = pane_id "|" emoji "|" pidx "|" proj "|" compat_status "|" proc_type "|" line
         sort_key[count] = sprintf("%d:%d:%03d", spri, tpri, window_index + 0)
         count++
     }

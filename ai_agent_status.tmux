@@ -9,10 +9,16 @@ source "$CURRENT_DIR/scripts/shared.sh"
 ai_agent_status="#($CURRENT_DIR/scripts/ai_agent_status.sh)"
 ai_agent_status_interpolation="\#{ai_agent_status}"
 
+# Window-specific status (uses tmux's #{window_index} and #{session_name} expansion)
+ai_agent_window_status="#($CURRENT_DIR/scripts/ai_agent_window_status.sh '#{window_index}' '#{session_name}')"
+ai_agent_window_status_interpolation="\#{ai_agent_window_status}"
+
 # Interpolate format strings
 do_interpolation() {
     local string="$1"
-    echo "${string/$ai_agent_status_interpolation/$ai_agent_status}"
+    string="${string/$ai_agent_status_interpolation/$ai_agent_status}"
+    string="${string/$ai_agent_window_status_interpolation/$ai_agent_window_status}"
+    echo "$string"
 }
 
 # Update tmux option with interpolation
@@ -75,6 +81,10 @@ main() {
     update_tmux_option "status-format[0]"
     update_tmux_option "status-format[1]"
     update_tmux_option "pane-border-format"
+
+    # Window status options (for #{ai_agent_window_status})
+    update_tmux_option "window-status-current-format"
+    update_tmux_option "window-status-format"
 
     # Setup optional keybindings
     setup_select_keybinding

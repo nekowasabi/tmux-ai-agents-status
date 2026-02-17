@@ -550,6 +550,122 @@ get_project_session_dir_cached() {
     echo ""
 }
 
+# tmuxペインコンテンツからClaude Codeの状態を検出
+# $1: pane_id
+# 戻り値: "running[:elapsed_time]|waiting|idle|unknown" + オプションで ":plan_mode" または ":accept_edits"
+detect_claude_status_from_pane() {
+    local pane_id="$1"
+
+    # ペインコンテンツを取得（最後100行、ANSIエスケープ除去）
+    local content
+    content=$(LC_ALL=C.UTF-8 tmux capture-pane -t "$pane_id" -p -S -100 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+
+    if [ -z "$content" ]; then
+        echo "unknown"
+        return
+    fi
+
+    local last_line
+    last_line=$(echo "$content" | tail -1)
+
+    local mode_suffix=""
+
+    # Mode検出
+    if [[ "$content" =~ ⏸[[:space:]]+plan[[:space:]]+mode[[:space:]]+on ]]; then
+        mode_suffix=":plan_mode"
+    elif [[ "$content" =~ ⏵⏵[[:space:]]+accept[[:space:]]+edits[[:space:]]+on ]]; then
+        mode_suffix=":accept_edits"
+    fi
+
+    # Running状態（優先度高）
+    # Note: bash =~ で括弧を使う場合は変数に格納する必要がある
+    local re_spinner_time_after re_spinner_time_before
+    re_spinner_time_after='^[✢✽✶✻·][[:space:]].+[[:space:]]*\([^)]*·[[:space:]]*(([0-9]+[smh][[:space:]]*)+)'
+    re_spinner_time_before='^[✢✽✶✻·][[:space:]].+[[:space:]]*\((([0-9]+[smh][[:space:]]*)+)[[:space:]]*·'
+
+    local line
+    while IFS= read -r line; do
+        # パターン1: スピナー + 時間情報（時間が後）
+        if [[ "$line" =~ $re_spinner_time_after ]]; then
+            local elapsed="${BASH_REMATCH[1]}"
+            elapsed=$(echo "$elapsed" | tr -d ' ')
+            echo "running:${elapsed}${mode_suffix}"
+            return
+        fi
+        # パターン2: 時間が先頭
+        if [[ "$line" =~ $re_spinner_time_before ]]; then
+            local elapsed="${BASH_REMATCH[1]}"
+            elapsed=$(echo "$elapsed" | tr -d ' ')
+            echo "running:${elapsed}${mode_suffix}"
+            return
+        fi
+    done <<< "$content"
+
+    # パターン3: 中断指示
+    if [[ "$content" =~ "esc to interrupt" ]] || [[ "$content" =~ "ctrl+c to interrupt" ]]; then
+        echo "running${mode_suffix}"
+        return
+    fi
+
+    # Waiting状態
+    if [[ "$content" =~ "Allow once" ]] || [[ "$content" =~ "Allow always" ]] || [[ "$content" =~ "Deny" ]]; then
+        echo "waiting${mode_suffix}"
+        return
+    fi
+    local re_menu_select='❯[[:space:]]+[0-9]+\.'
+    while IFS= read -r line; do
+        if [[ "$line" =~ $re_menu_select ]]; then
+            echo "waiting${mode_suffix}"
+            return
+        fi
+    done <<< "$content"
+    if [[ "$content" =~ "↑/↓ to navigate" ]]; then
+        echo "waiting${mode_suffix}"
+        return
+    fi
+    if [[ "$content" =~ "Continue?" ]] || [[ "$content" =~ "Proceed?" ]]; then
+        echo "waiting${mode_suffix}"
+        return
+    fi
+
+    # Idle状態（ANSIエスケープ除去済みなので緩和したパターンでマッチ）
+    # 末尾10行で ❯ を検索（ステータスバーが最終行の場合も対応）
+    local tail_content
+    tail_content=$(echo "$content" | tail -10)
+    if [[ "$tail_content" =~ ❯ ]] && ! [[ "$content" =~ "to interrupt" ]]; then
+        echo "idle${mode_suffix}"
+        return
+    fi
+
+    echo "unknown${mode_suffix}"
+}
+
+# 詳細状態を取得（4段階 + モード情報）
+# $1: PID, $2: pane_id
+# 戻り値: "running:1m30s:plan_mode" など
+get_detailed_status() {
+    local pid="$1"
+    local pane_id="${2:-}"
+
+    if [ -n "$pane_id" ]; then
+        local detailed
+        detailed=$(detect_claude_status_from_pane "$pane_id")
+        if [[ "$detailed" != unknown* ]]; then
+            echo "$detailed"
+            return
+        fi
+    fi
+
+    # フォールバック: 既存ロジックで判定
+    local basic_status
+    basic_status=$(check_process_status "$pid" "$pane_id")
+    if [ "$basic_status" = "working" ]; then
+        echo "running"
+    else
+        echo "idle"
+    fi
+}
+
 # 単一プロセスのworking状態を判定
 # $1: PID, $2: pane_id（ペインコンテンツ変化検出用、オプション）
 # 戻り値: "working" または "idle"
@@ -565,6 +681,28 @@ check_process_status() {
 
     local current_time
     current_time=$(get_current_timestamp)
+
+    # 方法0: tmuxペインコンテンツからClaude状態を直接検出（最優先）
+    if [ -n "$pane_id" ]; then
+        local pane_status
+        pane_status=$(detect_claude_status_from_pane "$pane_id")
+        # mode suffix を除去して基本状態のみ取得
+        local base_status="${pane_status%%:*}"
+        case "$base_status" in
+            running)
+                echo "working"
+                return
+                ;;
+            waiting)
+                echo "working"
+                return
+                ;;
+            idle)
+                echo "idle"
+                return
+                ;;
+        esac
+    fi
 
     # 方法1: ペインコンテンツの変化で判定（pane_idが提供されている場合）
     if [ -n "$pane_id" ]; then
@@ -763,14 +901,32 @@ get_session_details() {
             seen_project_names+="|${project_name}:1|"
         fi
 
-        # 状態を取得（ペインIDを渡す）
-        status=$(check_process_status "$pid" "$pane_id")
+        # 詳細状態を取得（4段階 + elapsed + mode）
+        local detailed_status
+        detailed_status=$(get_detailed_status "$pid" "$pane_id")
 
-        # 詳細を追加（新形式: process_type:terminal_emoji:pane_index:project_name:status）
+        # detailed_status をパース: "running:1m30s:plan_mode" or "running:1m30s" or "idle" etc.
+        local base_status="" elapsed="" mode=""
+        IFS=':' read -r base_status elapsed mode <<< "$detailed_status"
+
+        # elapsed が mode 名の場合は修正（"idle:plan_mode" のように elapsed なしのケース）
+        if [[ "$elapsed" == "plan_mode" || "$elapsed" == "accept_edits" ]]; then
+            mode="$elapsed"
+            elapsed=""
+        fi
+
+        # 後方互換: working/idle へのマッピング（ソート用）
+        local compat_status
+        case "$base_status" in
+            running|waiting) compat_status="working" ;;
+            *) compat_status="idle" ;;
+        esac
+
+        # 詳細を追加（拡張形式: process_type:terminal_emoji:pane_index:project_name:compat_status:base_status:elapsed:mode）
         if [ -n "$details" ]; then
             details+="|"
         fi
-        details+="${proc_type}:${terminal_emoji}:${pane_index}:${project_name}:${status}"
+        details+="${proc_type}:${terminal_emoji}:${pane_index}:${project_name}:${compat_status}:${base_status}:${elapsed}:${mode}"
     done
 
     echo "$details"
