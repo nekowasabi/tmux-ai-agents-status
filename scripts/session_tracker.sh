@@ -553,20 +553,16 @@ get_project_session_dir_cached() {
 # tmuxペインコンテンツからClaude Codeの状態を検出
 # $1: pane_id
 # 戻り値: "running[:elapsed_time]|waiting|idle|unknown" + オプションで ":plan_mode" または ":accept_edits"
-detect_claude_status_from_pane() {
-    local pane_id="$1"
-
-    # ペインコンテンツを取得（最後100行、ANSIエスケープ除去）
-    local content
-    content=$(LC_ALL=C.UTF-8 tmux capture-pane -t "$pane_id" -p -S -100 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+# ペインコンテンツからClaude Code状態を分析（キャプチャ済みコンテンツを受け取る）
+# 引数: $1 = ANSIエスケープ除去済みのペインコンテンツ
+# 出力: "running:1m30s:plan_mode" / "idle:plan_mode" / "waiting" / "unknown" 等
+_detect_status_from_content() {
+    local content="$1"
 
     if [ -z "$content" ]; then
         echo "unknown"
         return
     fi
-
-    local last_line
-    last_line=$(echo "$content" | tail -1)
 
     local mode_suffix=""
 
@@ -582,22 +578,28 @@ detect_claude_status_from_pane() {
     local re_spinner_time_after re_spinner_time_before
     re_spinner_time_after='^[✢✽✶✻·][[:space:]].+[[:space:]]*\([^)]*·[[:space:]]*(([0-9]+[smh][[:space:]]*)+)'
     re_spinner_time_before='^[✢✽✶✻·][[:space:]].+[[:space:]]*\((([0-9]+[smh][[:space:]]*)+)[[:space:]]*·'
+    local re_menu_select='❯[[:space:]]+[0-9]+\.'
 
-    local line
+    # 1パスループ: スピナー検出 + メニュー選択検出を統合
+    local line found_menu=0
     while IFS= read -r line; do
         # パターン1: スピナー + 時間情報（時間が後）
         if [[ "$line" =~ $re_spinner_time_after ]]; then
             local elapsed="${BASH_REMATCH[1]}"
-            elapsed=$(echo "$elapsed" | tr -d ' ')
+            elapsed="${elapsed// /}"
             echo "running:${elapsed}${mode_suffix}"
             return
         fi
         # パターン2: 時間が先頭
         if [[ "$line" =~ $re_spinner_time_before ]]; then
             local elapsed="${BASH_REMATCH[1]}"
-            elapsed=$(echo "$elapsed" | tr -d ' ')
+            elapsed="${elapsed// /}"
             echo "running:${elapsed}${mode_suffix}"
             return
+        fi
+        # メニュー選択パターン（後で waiting 判定に使用）
+        if [[ "$line" =~ $re_menu_select ]]; then
+            found_menu=1
         fi
     done <<< "$content"
 
@@ -612,13 +614,10 @@ detect_claude_status_from_pane() {
         echo "waiting${mode_suffix}"
         return
     fi
-    local re_menu_select='❯[[:space:]]+[0-9]+\.'
-    while IFS= read -r line; do
-        if [[ "$line" =~ $re_menu_select ]]; then
-            echo "waiting${mode_suffix}"
-            return
-        fi
-    done <<< "$content"
+    if [ "$found_menu" = "1" ]; then
+        echo "waiting${mode_suffix}"
+        return
+    fi
     if [[ "$content" =~ "↑/↓ to navigate" ]]; then
         echo "waiting${mode_suffix}"
         return
@@ -628,16 +627,24 @@ detect_claude_status_from_pane() {
         return
     fi
 
-    # Idle状態（ANSIエスケープ除去済みなので緩和したパターンでマッチ）
-    # 末尾10行で ❯ を検索（ステータスバーが最終行の場合も対応）
-    local tail_content
-    tail_content=$(echo "$content" | tail -10)
-    if [[ "$tail_content" =~ ❯ ]] && ! [[ "$content" =~ "to interrupt" ]]; then
+    # Idle状態: ❯ プロンプトの存在チェック（30行キャプチャなので全体検索で十分）
+    if [[ "$content" =~ ❯ ]] && ! [[ "$content" =~ "to interrupt" ]]; then
         echo "idle${mode_suffix}"
         return
     fi
 
     echo "unknown${mode_suffix}"
+}
+
+# ペインIDからClaude Code状態を検出（キャプチャ + 分析）
+detect_claude_status_from_pane() {
+    local pane_id="$1"
+
+    # ペインコンテンツを取得（最後30行、ANSIエスケープ除去）
+    local content
+    content=$(LC_ALL=C.UTF-8 tmux capture-pane -t "$pane_id" -p -S -30 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+
+    _detect_status_from_content "$content"
 }
 
 # 詳細状態を取得（4段階 + モード情報）
@@ -827,6 +834,10 @@ get_session_details() {
         return
     fi
 
+    # ペインステータスキャッシュを初期化（select_claude_launcher.sh用）
+    local _status_cache_tmp="/tmp/ai_agent_pane_status_cache.$$"
+    > "$_status_cache_tmp"
+
     # Attached セッション一覧を取得（Detached 除外用）
     local attached_sessions
     attached_sessions=$(tmux list-clients -F '#{client_session}' 2>/dev/null | sort -u)
@@ -850,7 +861,7 @@ get_session_details() {
         fi
 
         # ペイン情報を取得（重複チェック用）
-        pane_info=$(get_pane_info_for_pid "$pid")
+        pane_info=$(get_pane_info_for_pid_cached "$pid")
         if [ -z "$pane_info" ]; then
             pane_id="unknown_$$_$pid"
             pane_index=""
@@ -880,10 +891,10 @@ get_session_details() {
         seen_pane_ids+="|$pane_id|"
 
         # ターミナル絵文字を取得（pane_idを渡してセッション特定に使用）
-        terminal_emoji=$(get_terminal_emoji "$pid" "$pane_id")
+        terminal_emoji=$(get_terminal_emoji_cached "$pid" "$pane_id")
 
         # プロジェクト名を取得（作業ディレクトリ名）
-        project_name=$(get_project_name_for_pid "$pid")
+        project_name=$(get_project_name_for_pid_cached "$pid")
 
         # プロジェクト名の出現回数をカウント（Bash 3.x互換方式）
         local current_count=0
@@ -904,6 +915,9 @@ get_session_details() {
         # 詳細状態を取得（4段階 + elapsed + mode）
         local detailed_status
         detailed_status=$(get_detailed_status "$pid" "$pane_id")
+
+        # ペインステータスキャッシュに書き出し（pane_id|status 形式）
+        echo "${pane_id}|${detailed_status}" >> "$_status_cache_tmp"
 
         # detailed_status をパース: "running:1m30s:plan_mode" or "running:1m30s" or "idle" etc.
         local base_status="" elapsed="" mode=""
@@ -928,6 +942,9 @@ get_session_details() {
         fi
         details+="${proc_type}:${terminal_emoji}:${pane_index}:${project_name}:${compat_status}:${base_status}:${elapsed}:${mode}"
     done
+
+    # ステータスキャッシュをatomic renameで確定（ランチャーから参照される）
+    mv -f "$_status_cache_tmp" "/tmp/ai_agent_pane_status_cache" 2>/dev/null
 
     echo "$details"
 }

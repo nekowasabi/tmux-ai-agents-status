@@ -11,31 +11,54 @@ ORIGINAL_PANE=$(tmux display-message -p '#{pane_id}')
 source "$CURRENT_DIR/shared.sh"
 source "$CURRENT_DIR/session_tracker.sh"
 
-# Initialize batch cache for efficient data gathering
-init_batch_cache
+# 共有キャッシュを確認（ai_agent_status.shが生成したもの）
+# 新鮮なキャッシュがあればバッチ初期化をスキップして高速化
+SHARED_CACHE_DATA=""
+SHARED_CACHE_OPTIONS=""
+SHARED_CACHE_TTY_STAT=""
+if read_shared_cache_all; then
+    SHARED_CACHE_DATA="$_SHARED_CACHE_PROCESSES"
+    SHARED_CACHE_OPTIONS="$_SHARED_CACHE_OPTIONS"
+    SHARED_CACHE_TTY_STAT="$_SHARED_CACHE_TTY_STAT"
+fi
 
-# Get raw process data
-process_data=$(get_all_claude_info_batch 2>/dev/null)
+# 共有キャッシュがない場合のみバッチ処理キャッシュを初期化
+if [ -z "$SHARED_CACHE_DATA" ]; then
+    init_batch_cache
+else
+    # 共有キャッシュヒット時でも tmux options ファイルは必要
+    # (get_tmux_options_bulk が BATCH_INITIALIZED チェックするため)
+    BATCH_TMUX_OPTIONS_FILE=$(mktemp /tmp/ai_agent_tmux_opts_XXXXXX)
+    tmux show-options -g 2>/dev/null > "$BATCH_TMUX_OPTIONS_FILE"
+    BATCH_INITIALIZED=1
+fi
+
+# Get raw process data (use shared cache if available, otherwise batch)
+if [ -n "$SHARED_CACHE_DATA" ]; then
+    process_data="$SHARED_CACHE_DATA"
+else
+    process_data=$(get_all_claude_info_batch 2>/dev/null)
+fi
 
 if [ -z "$process_data" ]; then
     tmux display-message "No Claude Code processes found."
     exit 0
 fi
 
-# Get working/idle status icons from tmux options (legacy, kept for backward compat)
-working_dot=$(get_tmux_option "@ai_agent_working_dot" "🤖")
-idle_dot=$(get_tmux_option "@ai_agent_idle_dot" "🔔")
-
-# 4-state status icons (colorful emoji for better visibility)
-running_icon=$(get_tmux_option "@ai_agent_running_icon" "🟢")
-waiting_icon=$(get_tmux_option "@ai_agent_waiting_icon" "🟡")
-idle_icon_new=$(get_tmux_option "@ai_agent_idle_icon_new" "🔵")
-unknown_icon=$(get_tmux_option "@ai_agent_unknown_icon" "❓")
-plan_mode_indicator=$(get_tmux_option "@ai_agent_plan_mode_indicator" "⏸")
-accept_edits_indicator=$(get_tmux_option "@ai_agent_accept_edits_indicator" "⏵⏵")
-
-# Get working threshold
-working_threshold=$(get_tmux_option "@ai_agent_working_threshold" "5")
+# Get all tmux options in one batch (replaces 9 individual get_tmux_option calls)
+eval "$(get_tmux_options_bulk \
+    "@ai_agent_working_dot=🤖" \
+    "@ai_agent_idle_dot=🔔" \
+    "@ai_agent_running_icon=🟢" \
+    "@ai_agent_waiting_icon=🟡" \
+    "@ai_agent_idle_icon_new=🔵" \
+    "@ai_agent_unknown_icon=❓" \
+    "@ai_agent_plan_mode_indicator=⏸" \
+    "@ai_agent_accept_edits_indicator=⏵⏵" \
+    "@ai_agent_working_threshold=5" \
+    "@ai_agent_fzf_preview=on" \
+    "@ai_agent_fzf_preview_position=down" \
+    "@ai_agent_fzf_preview_size=50%")"
 
 # Get current time once
 current_time="${EPOCHSECONDS:-$(date +%s)}"
@@ -43,6 +66,31 @@ current_time="${EPOCHSECONDS:-$(date +%s)}"
 # Prepare display lines and pane IDs
 > "$TEMP_DATA"
 > "${TEMP_DATA}_panes"
+
+# ペインステータスキャッシュを確認（ai_agent_status.shが2秒毎に更新）
+_STATUS_CACHE_FILE="/tmp/ai_agent_pane_status_cache"
+_USE_STATUS_CACHE=0
+if [ -f "$_STATUS_CACHE_FILE" ]; then
+    _cache_mtime=$(stat -f %m "$_STATUS_CACHE_FILE" 2>/dev/null || echo 0)
+    _cache_age=$(( current_time - _cache_mtime ))
+    if [ "$_cache_age" -le 5 ]; then
+        _USE_STATUS_CACHE=1
+        # 改行区切りで囲んで bash 文字列検索用に整形（grep不要）
+        _STATUS_CACHE_CONTENT=$'\n'"$(cat "$_STATUS_CACHE_FILE")"$'\n'
+    fi
+fi
+
+# ステータスキャッシュがない場合のみ、ペインコンテンツを並列キャプチャ
+_CAPTURE_DIR=""
+if [ "$_USE_STATUS_CACHE" != "1" ]; then
+    _CAPTURE_DIR="/tmp/ai_agent_capture_$$"
+    mkdir -p "$_CAPTURE_DIR"
+    while IFS='|' read -r _pid _pane_id _rest; do
+        [ -z "$_pane_id" ] && continue
+        (LC_ALL=C.UTF-8 tmux capture-pane -t "$_pane_id" -p -S -30 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' > "$_CAPTURE_DIR/$_pane_id") &
+    done <<< "$process_data"
+    wait
+fi
 
 # Format: pid|pane_id|session_name|window_index|tty_path|terminal_name|cwd
 while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_name cwd; do
@@ -63,8 +111,19 @@ while IFS='|' read -r pid pane_id session_name window_index tty_path terminal_na
         *) emoji="❓" ;;
     esac
 
-    # 4-state status detection using pane content analysis
-    detailed_status=$(detect_claude_status_from_pane "$pane_id")
+    # 4-state status detection (キャッシュ優先、なければpre-captured content)
+    if [ "$_USE_STATUS_CACHE" = "1" ]; then
+        # ステータスキャッシュから取得（純bash文字列操作、サブシェル不要）
+        if [[ "$_STATUS_CACHE_CONTENT" == *$'\n'"${pane_id}|"* ]]; then
+            _match="${_STATUS_CACHE_CONTENT#*$'\n'${pane_id}|}"
+            detailed_status="${_match%%$'\n'*}"
+        else
+            detailed_status="unknown"
+        fi
+    else
+        _pane_content=$(cat "$_CAPTURE_DIR/$pane_id" 2>/dev/null)
+        detailed_status=$(_detect_status_from_content "$_pane_content")
+    fi
 
     # Parse: "running:1m30s:plan_mode" or "idle:plan_mode" or "idle" etc.
     IFS=':' read -r base_st elapsed_st mode_st <<< "$detailed_status"
@@ -99,23 +158,20 @@ done <<< "$process_data"
 if [ ! -s "$TEMP_DATA" ]; then
     tmux display-message "No Claude Code processes found."
     rm -f "$TEMP_DATA" "${TEMP_DATA}_panes"
+    rm -rf "$_CAPTURE_DIR"
     exit 0
 fi
 
-# Get preview setting
-PREVIEW_ENABLED=$(get_tmux_option "@ai_agent_fzf_preview" "on")
+# Preview settings (already fetched via get_tmux_options_bulk)
+PREVIEW_ENABLED="$fzf_preview"
+PREVIEW_POSITION="$fzf_preview_position"
+PREVIEW_SIZE="$fzf_preview_size"
 PREVIEW_SCRIPT="$CURRENT_DIR/preview_pane.sh"
 
 # Build AI_AGENT_PANE_DATA for preview script
 # Format: "display_line\tpane_id\n" for each entry
 PANE_DATA_FILE="${TEMP_DATA}_pane_data"
 paste "$TEMP_DATA" "${TEMP_DATA}_panes" > "$PANE_DATA_FILE"
-
-# Read preview position and size from tmux options
-PREVIEW_POSITION=$(tmux show-option -gqv "@ai_agent_fzf_preview_position" 2>/dev/null)
-PREVIEW_POSITION="${PREVIEW_POSITION:-down}"
-PREVIEW_SIZE=$(tmux show-option -gqv "@ai_agent_fzf_preview_size" 2>/dev/null)
-PREVIEW_SIZE="${PREVIEW_SIZE:-50%}"
 
 # Build preview option
 PREVIEW_OPT=""
@@ -146,6 +202,7 @@ tmux popup -E -w 80% -h 60% "
         fi
     fi
     rm -f '$TEMP_DATA' '${TEMP_DATA}_panes' '$PANE_DATA_FILE'
+    rm -rf '$_CAPTURE_DIR'
 "
 
 # Step 3: After popup closes, execute action based on key pressed
