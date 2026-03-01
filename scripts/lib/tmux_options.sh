@@ -111,3 +111,10 @@ get_tmux_options_bulk() {
     }
     ' "$BATCH_TMUX_OPTIONS_FILE"
 }
+
+# @ai_agent_selector オプション取得
+# デフォルト値: "fzf"
+# 有効値: "fzf" | "menu"
+get_ai_agent_selector() {
+    get_tmux_option "@ai_agent_selector" "fzf"
+}

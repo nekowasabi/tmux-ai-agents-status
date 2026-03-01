@@ -39,7 +39,7 @@ update_tmux_option() {
 
 # Setup keybinding for Claude Code process selection
 setup_select_keybinding() {
-    local select_key
+    local select_key selector
     select_key=$(get_tmux_option "@ai_agent_select_key" "")
 
     # Skip if no key is configured
@@ -47,31 +47,34 @@ setup_select_keybinding() {
         return
     fi
 
-    # Bind the key to run select_claude.sh in a tmux popup (or split if popup not supported)
-    # Using tmux popup for better UX (available in tmux 3.2+)
-    local tmux_version
-    tmux_version=$(tmux -V | sed 's/[^0-9.]//g' | cut -d. -f1-2)
+    selector=$(get_tmux_option "@ai_agent_selector" "fzf")
 
-    # Check if tmux version supports popup (3.2+)
-    local use_popup=false
-    if [ -n "$tmux_version" ]; then
-        local major minor
-        major=$(echo "$tmux_version" | cut -d. -f1)
-        minor=$(echo "$tmux_version" | cut -d. -f2)
-        if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 2 ]; }; then
-            use_popup=true
-        fi
-    fi
-
-    local select_script="$CURRENT_DIR/scripts/select_claude.sh"
-    local launcher_script="$CURRENT_DIR/scripts/select_claude_launcher.sh"
-
-    if [ "$use_popup" = true ]; then
-        # Use launcher that prepares data BEFORE popup (prevents empty window flicker)
-        tmux bind-key "$select_key" run-shell "$launcher_script"
+    if [ "$selector" = "menu" ]; then
+        # Phase 2: Use tmux native display-menu (fast, no fzf required)
+        tmux bind-key "$select_key" run-shell "$CURRENT_DIR/scripts/select_claude_menu.sh"
     else
-        # Fallback to split-window for older tmux
-        tmux bind-key "$select_key" split-window -v "$select_script"
+        # Phase 1 / default: fzf popup (available in tmux 3.2+)
+        local tmux_version
+        tmux_version=$(tmux -V | sed 's/[^0-9.]//g' | cut -d. -f1-2)
+
+        local use_popup=false
+        if [ -n "$tmux_version" ]; then
+            local major minor
+            major=$(echo "$tmux_version" | cut -d. -f1)
+            minor=$(echo "$tmux_version" | cut -d. -f2)
+            if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 2 ]; }; then
+                use_popup=true
+            fi
+        fi
+
+        local select_script="$CURRENT_DIR/scripts/select_claude.sh"
+        local launcher_script="$CURRENT_DIR/scripts/select_claude_launcher.sh"
+
+        if [ "$use_popup" = true ]; then
+            tmux bind-key "$select_key" run-shell "$launcher_script"
+        else
+            tmux bind-key "$select_key" split-window -v "$select_script"
+        fi
     fi
 }
 
