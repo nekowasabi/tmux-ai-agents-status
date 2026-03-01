@@ -285,6 +285,34 @@ test_show_codex_off_in_fzf() {
     ((TESTS_PASSED++))
 }
 
+# P4: $2 に pane_id を直接渡した場合、AI_AGENT_PANE_DATA 不要で動作する
+test_pane_id_arg_direct_pass() {
+    local preview_script="$PROJECT_ROOT/scripts/preview_pane.sh"
+    # スクリプトが $2 引数に対応しているか構造チェック
+    if grep -q 'PANE_ID_ARG' "$preview_script"; then
+        echo -e "${GREEN}PASS${NC}: preview_pane.sh has PANE_ID_ARG support"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}FAIL${NC}: preview_pane.sh should support PANE_ID_ARG (\$2 direct pane_id)"
+        ((TESTS_FAILED++))
+    fi
+    ((TESTS_RUN++))
+}
+
+# P4: $2 なしの場合は AI_AGENT_PANE_DATA にフォールバックする
+test_pane_id_arg_fallback_to_env() {
+    local preview_script="$PROJECT_ROOT/scripts/preview_pane.sh"
+    # AI_AGENT_PANE_DATA フォールバックが残っているか確認
+    if grep -q 'AI_AGENT_PANE_DATA' "$preview_script"; then
+        echo -e "${GREEN}PASS${NC}: preview_pane.sh retains AI_AGENT_PANE_DATA fallback"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}FAIL${NC}: preview_pane.sh should retain AI_AGENT_PANE_DATA fallback for backward compat"
+        ((TESTS_FAILED++))
+    fi
+    ((TESTS_RUN++))
+}
+
 main() {
     echo "Running preview_pane.sh tests..."
     echo "================================"
@@ -304,6 +332,9 @@ main() {
     test_process_list_includes_type
     test_codex_icon_in_fzf_list
     test_show_codex_off_in_fzf
+    # P4: $2 direct pane_id argument tests
+    test_pane_id_arg_direct_pass
+    test_pane_id_arg_fallback_to_env
 
     echo "================================"
     echo "Tests: $TESTS_RUN, Passed: $TESTS_PASSED, Failed: $TESTS_FAILED"

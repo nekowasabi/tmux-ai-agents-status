@@ -244,6 +244,23 @@ test_check_process_status_returns_valid_state() {
     fi
 }
 
+test_ai_agent_selector_default() {
+    echo -e "${YELLOW}--- Test: @ai_agent_selector default value is 'fzf' ---${NC}"
+    source "$PROJECT_ROOT/scripts/lib/tmux_options.sh"
+
+    local result
+    result=$(get_ai_agent_selector)
+
+    assert_equals "fzf" "$result" "@ai_agent_selector default value is 'fzf'"
+}
+
+test_ai_agent_selector_function_exists() {
+    echo -e "${YELLOW}--- Test: get_ai_agent_selector function exists ---${NC}"
+    source "$PROJECT_ROOT/scripts/lib/tmux_options.sh"
+
+    assert_function_exists "get_ai_agent_selector" "get_ai_agent_selector function exists"
+}
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -260,6 +277,8 @@ main() {
     test_get_file_mtime
     test_get_current_timestamp
     test_check_process_status_returns_valid_state
+    test_ai_agent_selector_function_exists
+    test_ai_agent_selector_default
 
     teardown
 }
