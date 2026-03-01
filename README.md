@@ -77,6 +77,7 @@ set -g status-format[1] "#{ai_agent_status}"
 | `@ai_agent_terminal_windows` | `🪟` | Emoji for Windows Terminal |
 | `@ai_agent_terminal_unknown` | `❓` | Emoji for unknown terminal |
 | `@ai_agent_working_threshold` | `30` | Threshold for working/idle detection (seconds) |
+| `@ai_agent_selector` | `fzf` / `menu` | Selector type: `fzf` (fzf popup with prerender, ~300ms) or `menu` (tmux native menu, ~30-50ms) |
 | `@ai_agent_select_key` | `""` (empty) | Keybinding to open process selector (e.g., `C-g`) |
 | `@ai_agent_fzf_opts` | `"--height=40% --reverse --border --prompt='Select Claude: '"` | fzf options for process selector |
 | `@ai_agent_fzf_preview` | `on` | Enable/disable fzf preview pane (`on`/`off`) |
@@ -101,6 +102,9 @@ set -g @ai_agent_working_threshold "10"
 
 # Enable process selector with keybinding (requires fzf)
 set -g @ai_agent_select_key "C-j"  # prefix + Ctrl-j to open selector
+
+# Use tmux native menu instead of fzf (~30-50ms, no fzf required)
+set -g @ai_agent_selector "menu"
 
 # Customize fzf options for process selector
 set -g @ai_agent_fzf_opts "--height=50% --reverse --border --prompt='Claude> '"
@@ -133,6 +137,8 @@ The process selector allows you to quickly switch between multiple Claude Code s
 - **Automatic Focus**: Automatically switches focus to the selected process and its tmux pane
 - **Status Priority**: Sorts processes with working status first, followed by idle processes
 - **Send Prompt (Ctrl+S)**: Send a prompt to the selected Claude Code session via popup
+- **Prerender Fast Path**: Display data is prerendered by `ai_agent_status.sh` (TTL: 10s), eliminating ~300ms collection delay on launch
+- **Native Menu Mode**: Set `@ai_agent_selector "menu"` to use tmux `display-menu` (~30-50ms) instead of fzf popup
 
 **Setup:**
 ```bash
@@ -207,6 +213,16 @@ export AI_AGENT_WORKING_THRESHOLD=10  # Change to 10 seconds
 ### Cache Function
 
 Status output is cached for 2 seconds for improved performance.
+
+### Process Selector Performance
+
+The process selector uses a **prerender fast path** for near-instant display:
+
+1. `ai_agent_status.sh` pre-generates `/tmp/ai_agent_fzf_prerender` (TAB-delimited: `display_string\tpane_id`) every 2 seconds
+2. `select_claude_launcher.sh` reads the prerender file directly if fresh (≤10s TTL) — no shell sourcing needed
+3. Falls back to legacy path (full `shared.sh` + `session_tracker.sh` sourcing) when prerender is stale or missing
+
+This reduces selector startup latency from ~2s to ~100ms on typical systems.
 
 ## Display Example
 
