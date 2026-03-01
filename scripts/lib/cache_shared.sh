@@ -77,6 +77,128 @@ write_shared_cache() {
     } > "$SHARED_CACHE_FILE" 2>/dev/null
 }
 
+# fzf表示用プリレンダーファイルを書き出す
+# $1: process_info (pid|pane_id|session|window|tty|terminal|cwd 形式、複数行可)
+# $2: status_cache パス (デフォルト: /tmp/ai_agent_pane_status_cache)
+# $3: 出力ファイルパス (デフォルト: /tmp/ai_agent_fzf_prerender)
+# 出力形式: 各行 "表示文字列\tpane_id"
+# atomic write: .tmp → mv -f
+# macOS bash 3.2 互換 (declare -A 不可)
+write_fzf_prerender() {
+    local process_info="$1"
+    local status_cache="${2:-/tmp/ai_agent_pane_status_cache}"
+    local output_file="${3:-/tmp/ai_agent_fzf_prerender}"
+    local tmp_file="${output_file}.tmp"
+
+    # 空入力は空ファイルを生成して正常終了
+    if [ -z "$process_info" ]; then
+        > "$tmp_file" 2>/dev/null && mv -f "$tmp_file" "$output_file" 2>/dev/null
+        return 0
+    fi
+
+    # awk で process_info と status_cache を結合して表示文字列を生成
+    # macOS bash 3.2 互換: awk 内部でハッシュを使用
+    awk -F'|' -v status_cache="$status_cache" '
+    BEGIN {
+        # status_cache を読み込み: pane_id|detailed_status
+        while ((getline line < status_cache) > 0) {
+            n = index(line, "|")
+            if (n > 0) {
+                pid_key = substr(line, 1, n - 1)
+                detailed = substr(line, n + 1)
+                # base_status を抽出 (running:2m30s → running)
+                m = index(detailed, ":")
+                if (m > 0) {
+                    base_st[pid_key] = substr(detailed, 1, m - 1)
+                    rest = substr(detailed, m + 1)
+                    # elapsed と mode を抽出
+                    m2 = index(rest, ":")
+                    if (m2 > 0) {
+                        pane_elapsed[pid_key] = substr(rest, 1, m2 - 1)
+                        pane_mode[pid_key] = substr(rest, m2 + 1)
+                    } else if (rest == "plan_mode" || rest == "accept_edits") {
+                        pane_elapsed[pid_key] = ""
+                        pane_mode[pid_key] = rest
+                    } else {
+                        pane_elapsed[pid_key] = rest
+                        pane_mode[pid_key] = ""
+                    }
+                } else {
+                    base_st[pid_key] = detailed
+                    pane_elapsed[pid_key] = ""
+                    pane_mode[pid_key] = ""
+                }
+            }
+        }
+        close(status_cache)
+    }
+    {
+        pane_id = $2
+        if (pane_id == "" || pane_id in seen) next
+        seen[pane_id] = 1
+
+        session_name = $3
+        window_index = $4
+        terminal_name = $6
+        cwd = $7
+
+        # ターミナル絵文字 (case相当をif-elseで実現)
+        if (terminal_name == "iTerm2" || terminal_name == "Terminal") {
+            emoji = "🍎"
+        } else if (terminal_name == "WezTerm") {
+            emoji = "⚡"
+        } else if (terminal_name == "Ghostty") {
+            emoji = "👻"
+        } else if (terminal_name == "WindowsTerminal") {
+            emoji = "🪟"
+        } else if (terminal_name == "VSCode") {
+            emoji = "📝"
+        } else if (terminal_name == "Alacritty") {
+            emoji = "🔲"
+        } else {
+            emoji = "❓"
+        }
+
+        # プロジェクト名 (cwd の最後のディレクトリ)
+        n = split(cwd, parts, "/")
+        proj = parts[n]
+        if (proj == "" || proj == "/") proj = "claude"
+        if (length(proj) > 18) proj = substr(proj, 1, 15) "..."
+
+        # ステータスアイコン
+        st = (pane_id in base_st) ? base_st[pane_id] : "unknown"
+        if (st == "running") {
+            icon = "🟢"
+        } else if (st == "waiting") {
+            icon = "🟡"
+        } else if (st == "idle") {
+            icon = "🔵"
+        } else {
+            icon = "❓"
+        }
+
+        # 経過時間・モード表示
+        elapsed = (pane_id in pane_elapsed) ? pane_elapsed[pane_id] : ""
+        mode = (pane_id in pane_mode) ? pane_mode[pane_id] : ""
+
+        status_prefix = icon
+        if (elapsed != "") status_prefix = status_prefix elapsed
+        if (mode == "plan_mode") status_prefix = status_prefix " ⏸"
+        else if (mode == "accept_edits") status_prefix = status_prefix " ⏵⏵"
+
+        # 表示行を構築
+        pidx = "#" window_index
+        line = status_prefix " " emoji " " pidx " " proj
+        if (session_name != "") line = line " [" session_name "]"
+
+        print line "\t" pane_id
+    }
+    ' <<< "$process_info" > "$tmp_file" 2>/dev/null
+
+    mv -f "$tmp_file" "$output_file" 2>/dev/null
+    return 0
+}
+
 # 共有キャッシュからプロセス情報行のみを取得
 # 戻り値: プロセス情報（4行目以降）
 read_shared_cache_process_info() {

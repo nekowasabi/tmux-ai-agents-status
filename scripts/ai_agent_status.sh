@@ -69,6 +69,7 @@ main() {
     batch_info=$(get_all_claude_info_batch)
     if [ -n "$batch_info" ]; then
         write_shared_cache "$batch_info"
+        write_fzf_prerender "$batch_info" 2>/dev/null || true
     fi
 
     # No sessions

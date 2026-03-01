@@ -12,21 +12,25 @@ if [ -z "$SELECTED_LINE" ]; then
     exit 0
 fi
 
-# AI_AGENT_PANE_DATA 環境変数からpane_idを検索
-# フォーマット: "display_line\tpane_id\n" の繰り返し
-if [ -z "${AI_AGENT_PANE_DATA:-}" ]; then
+# $2 で pane_id を直接渡された場合はそれを優先（高速パス）
+# AI_AGENT_PANE_DATA 環境変数からの検索にフォールバック（後方互換）
+PANE_ID_ARG="${2:-}"
+PANE_ID=""
+
+if [ -n "$PANE_ID_ARG" ]; then
+    PANE_ID="$PANE_ID_ARG"
+elif [ -n "${AI_AGENT_PANE_DATA:-}" ]; then
+    # AI_AGENT_PANE_DATA フォーマット: "display_line\tpane_id\n" の繰り返し
+    while IFS=$'\t' read -r display_line pane_id; do
+        if [ "$display_line" = "$SELECTED_LINE" ]; then
+            PANE_ID="$pane_id"
+            break
+        fi
+    done <<< "$AI_AGENT_PANE_DATA"
+else
     echo "Preview data not available"
     exit 0
 fi
-
-# 選択行に対応するpane_idを検索
-PANE_ID=""
-while IFS=$'\t' read -r display_line pane_id; do
-    if [ "$display_line" = "$SELECTED_LINE" ]; then
-        PANE_ID="$pane_id"
-        break
-    fi
-done <<< "$AI_AGENT_PANE_DATA"
 
 if [ -z "$PANE_ID" ]; then
     echo "Pane not found for selection"
