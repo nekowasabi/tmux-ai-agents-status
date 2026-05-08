@@ -897,6 +897,10 @@ get_session_details() {
         # プロジェクト名を取得（作業ディレクトリ名）
         project_name=$(get_project_name_for_pid_cached "$pid")
 
+        # @ai_agent_pane_title_sync = on の場合、Claude Code /rename 等で
+        # 設定された tmux pane_title を優先表示する（デフォルトは off で従来挙動）
+        project_name=$(get_pane_display_name "$pane_id" "$project_name")
+
         # プロジェクト名の出現回数をカウント（Bash 3.x互換方式）
         local current_count=0
         if [[ "$seen_project_names" == *"|$project_name:"* ]]; then

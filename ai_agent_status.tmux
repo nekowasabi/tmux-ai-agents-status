@@ -78,7 +78,23 @@ setup_select_keybinding() {
     fi
 }
 
+setup_pane_title_sync() {
+    local sync_enabled
+    sync_enabled=$(get_tmux_option "@ai_agent_pane_title_sync" "")
+
+    if [ "$sync_enabled" != "on" ]; then
+        return
+    fi
+
+    # Why: enable tmux pane_title pipeline so /rename's OSC 2 reaches #{pane_title}; opt-in to avoid clashing with user/plugin tmux.conf
+    tmux set-option -g set-titles on
+    tmux set-option -g allow-rename on
+    tmux set-option -g automatic-rename off
+}
+
 main() {
+    setup_pane_title_sync
+
     update_tmux_option "status-right"
     update_tmux_option "status-left"
     update_tmux_option "status-format[0]"

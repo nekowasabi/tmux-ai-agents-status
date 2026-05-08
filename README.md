@@ -84,6 +84,7 @@ set -g status-format[1] "#{ai_agent_status}"
 | `@ai_agent_fzf_preview_lines` | `30` | Number of lines to show in preview |
 | `@ai_agent_fzf_preview_position` | `down` | fzf preview window position: `up`, `down`, `left`, `right` |
 | `@ai_agent_fzf_preview_size` | `50%` | fzf preview window size (e.g., `50%`, `40%`, `60%`) |
+| `@ai_agent_pane_title_sync` | `off` | When `on`, prefer the tmux `pane_title` (updated via Claude Code `/rename` OSC 2) as the display name. The plugin auto-applies `set-titles on` / `allow-rename on` / `automatic-rename off` at startup. |
 
 ### Customization Examples
 
@@ -153,6 +154,9 @@ set -g @ai_agent_select_key "C-j"
    - **Enter**: Switch to the selected Claude Code session
    - **Ctrl+S**: Open a popup to send a prompt to the selected session
 4. The selected process's terminal will be activated and the corresponding tmux pane will be focused
+
+**Tip — Rename via Claude Code `/rename`:**
+When using Claude Code, run `/rename <project-name>` at session start in each pane. With `@ai_agent_pane_title_sync` enabled, the `claude` label shown in the statusline and window-status will be replaced with the chosen name.
 
 **Usage - Command Line:**
 ```bash
